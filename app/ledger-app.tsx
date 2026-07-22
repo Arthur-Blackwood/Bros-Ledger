@@ -48,7 +48,7 @@ const money = (cents: number, currency = "AUD", signed = false) => {
   return `${cents > 0 ? "+" : "−"}${text}`;
 };
 
-const reportNote = (note: string) => note.split(/\r?\n/, 1)[0] || "No note";
+const displayNote = (note: string, fallback = "No note") => note.split(/\r?\n/, 1)[0].trim() || fallback;
 
 const longDate = (dateKey: string) => new Intl.DateTimeFormat("en-AU", {
   month: "long", day: "numeric", weekday: "short",
@@ -308,7 +308,7 @@ export function LedgerApp() {
                 {loading ? <div className="empty-state">Opening your ledger…</div> : selectedItems.length ? selectedItems.map((item) => (
                   <article className="transaction" key={item.id}>
                     <div className="category-icon" style={{ background: `${categoryMeta[item.category]?.color ?? categoryMeta.Other.color}30` }}>{categoryEmoji(item.category)}</div>
-                    <div className="transaction-copy"><h3>{item.note || "Untitled entry"}</h3><p>{item.category} · {item.account}</p></div>
+                    <div className="transaction-copy"><h3>{displayNote(item.note, "Untitled entry")}</h3><p>{item.category} · {item.account}</p></div>
                     <div className={`transaction-amount ${item.type}`}><strong>{item.type === "income" ? "+" : "−"}{money(item.amountCents, item.currency)}</strong>{item.source === "screenshot" && <span>Screenshot import</span>}</div>
                     {canEdit && <button className="delete-button" onClick={() => removeTransaction(item.id)} aria-label={`Delete ${item.note || "entry"}`}>×</button>}
                   </article>
@@ -350,9 +350,9 @@ export function LedgerApp() {
                   const dayNet = items.reduce((sum, item) => sum + (item.type === "income" ? item.amountCents : -item.amountCents), 0);
                   return <section className="ledger-day" key={date}>
                     <div className="ledger-day-head"><strong>{longDate(date)}</strong><span>{items.length} {items.length === 1 ? "entry" : "entries"}</span><b>{money(dayNet, items[0]?.currency ?? currency, true)}</b></div>
-                    {items.map((item) => <button className="ledger-entry-row" key={item.id} onClick={() => canEdit && setEditingTransaction(item)} disabled={!canEdit} aria-label={canEdit ? `Edit ${reportNote(item.note)}` : `${item.category}, ${reportNote(item.note)}, view only`}>
+                    {items.map((item) => <button className="ledger-entry-row" key={item.id} onClick={() => canEdit && setEditingTransaction(item)} disabled={!canEdit} aria-label={canEdit ? `Edit ${displayNote(item.note)}` : `${item.category}, ${displayNote(item.note)}, view only`}>
                       <span className="ledger-category"><i style={{ background: `${categoryMeta[item.category]?.color ?? categoryMeta.Other.color}30` }}>{categoryEmoji(item.category)}</i><b>{item.category}</b></span>
-                      <span className="ledger-note">{reportNote(item.note)}</span>
+                      <span className="ledger-note">{displayNote(item.note)}</span>
                       <strong className={item.type}>{item.type === "income" ? "+" : "−"}{money(item.amountCents, item.currency)}</strong>
                       <span className="ledger-edit">{canEdit ? "Edit" : "View"}</span>
                     </button>)}
