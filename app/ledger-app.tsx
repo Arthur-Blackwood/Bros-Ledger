@@ -48,6 +48,8 @@ const money = (cents: number, currency = "AUD", signed = false) => {
   return `${cents > 0 ? "+" : "−"}${text}`;
 };
 
+const reportNote = (note: string) => note.split(/\r?\n/, 1)[0] || "No note";
+
 const longDate = (dateKey: string) => new Intl.DateTimeFormat("en-AU", {
   month: "long", day: "numeric", weekday: "short",
 }).format(new Date(`${dateKey}T12:00:00`));
@@ -348,9 +350,9 @@ export function LedgerApp() {
                   const dayNet = items.reduce((sum, item) => sum + (item.type === "income" ? item.amountCents : -item.amountCents), 0);
                   return <section className="ledger-day" key={date}>
                     <div className="ledger-day-head"><strong>{longDate(date)}</strong><span>{items.length} {items.length === 1 ? "entry" : "entries"}</span><b>{money(dayNet, items[0]?.currency ?? currency, true)}</b></div>
-                    {items.map((item) => <button className="ledger-entry-row" key={item.id} onClick={() => canEdit && setEditingTransaction(item)} disabled={!canEdit} aria-label={canEdit ? `Edit ${item.note || "entry"}` : `${item.category}, ${item.note || "No note"}, view only`}>
+                    {items.map((item) => <button className="ledger-entry-row" key={item.id} onClick={() => canEdit && setEditingTransaction(item)} disabled={!canEdit} aria-label={canEdit ? `Edit ${reportNote(item.note)}` : `${item.category}, ${reportNote(item.note)}, view only`}>
                       <span className="ledger-category"><i style={{ background: `${categoryMeta[item.category]?.color ?? categoryMeta.Other.color}30` }}>{categoryEmoji(item.category)}</i><b>{item.category}</b></span>
-                      <span className="ledger-note">{item.note || "No note"}</span>
+                      <span className="ledger-note">{reportNote(item.note)}</span>
                       <strong className={item.type}>{item.type === "income" ? "+" : "−"}{money(item.amountCents, item.currency)}</strong>
                       <span className="ledger-edit">{canEdit ? "Edit" : "View"}</span>
                     </button>)}
@@ -371,7 +373,7 @@ export function LedgerApp() {
               <h2>Send the bill to ChatGPT.<br />Let AI do the sorting.</h2>
               <p>ChatGPT can read the date, amount, note and category, then return the clean format below. Paste it here and import.</p>
               <ol><li><span>1</span>Send a bill screenshot in our chat</li><li><span>2</span>Ask for Daylight Ledger JSON</li><li><span>3</span>Paste, review and import</li></ol>
-              <button onClick={() => copyText("Please turn this bill screenshot into valid Daylight Ledger JSON. Include these fields: date, type, amount, currency, category, account, note, tags and source. Put the payment description in note, set source to screenshot, use English only, and output valid JSON only.", "Prompt for ChatGPT copied.")}>Copy prompt for ChatGPT</button>
+              <button onClick={() => copyText("Please turn this bill screenshot into valid Daylight Ledger JSON. Include these fields: date, type, amount, currency, category, account, note, tags and source. Write note in English with the merchant or location on the first line, a blank line, then one purchased item per line in the format Item - amount AUD. Set source to screenshot, and output valid JSON only.", "Prompt for ChatGPT copied.")}>Copy prompt for ChatGPT</button>
             </section>
             {canEdit && <section className="import-card">
               <div className="section-heading"><div><p>Structured entry point</p><h2>Import ledger JSON</h2></div><span>1–300 entries</span></div>
@@ -547,13 +549,25 @@ function TransactionDrawer({ today, categories, onClose, onSaved }: { today: str
       <div className="drawer-header"><div><p>Quick entry</p><h2>What was this one?</h2></div><button type="button" onClick={onClose}>×</button></div>
       <div className="type-toggle"><button type="button" className={type === "expense" ? "active" : ""} onClick={() => { setType("expense"); setCategory(expenseCategories[0]?.name ?? "Other"); }}>Expense</button><button type="button" className={type === "income" ? "active" : ""} onClick={() => { setType("income"); setCategory("Income"); }}>Income</button></div>
       <label className="amount-field"><span>A$</span><input autoFocus inputMode="decimal" placeholder="0.00" value={amount} onChange={(event) => setAmount(event.target.value)} aria-label="Amount" required /></label>
-      <label className="field-label">Note<input placeholder={type === "expense" ? "e.g. groceries at Coles" : "e.g. salary or refund"} value={note} onChange={(event) => setNote(event.target.value)} maxLength={240} required /></label>
+      <label className="field-label">Note<AutoGrowingNoteInput placeholder={type === "expense" ? "e.g. Coles\n\nMilk - 3.50 AUD" : "e.g. Salary payment"} value={note} onChange={setNote} /></label>
       {type === "expense" && <fieldset className="category-picker"><legend>Choose a category</legend><div>{expenseCategories.map((item) => <button type="button" key={item.id} className={category === item.name ? "active" : ""} onClick={() => setCategory(item.name)}><span>{item.emoji}</span>{item.name}</button>)}</div></fieldset>}
       <div className="field-row"><label className="field-label">Account<select value={account} onChange={(event) => setAccount(event.target.value)}><option>Everyday</option><option>Credit</option><option>Savings</option><option>Cash</option></select></label><label className="field-label">Date<input type="date" value={date} max={today} onChange={(event) => setDate(event.target.value)} /></label></div>
       {error && <p className="form-error">{error}</p>}
       <button className="save-button" disabled={saving}>{saving ? "Saving…" : "Save transaction"}</button>
     </form>
   </div>;
+}
+
+function AutoGrowingNoteInput({ value, onChange, placeholder }: { value: string; onChange: (value: string) => void; placeholder?: string }) {
+  const noteField = useRef<HTMLTextAreaElement>(null);
+
+  useLayoutEffect(() => {
+    if (!noteField.current) return;
+    noteField.current.style.height = "auto";
+    noteField.current.style.height = `${noteField.current.scrollHeight}px`;
+  }, [value]);
+
+  return <textarea ref={noteField} className="auto-grow-note" rows={1} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} maxLength={240} required />;
 }
 
 function EditTransactionDrawer({ transaction, categories, onClose, onSaved, onDeleted }: { transaction: Transaction; categories: LedgerCategory[]; onClose: () => void; onSaved: () => void; onDeleted: () => void }) {
@@ -563,13 +577,6 @@ function EditTransactionDrawer({ transaction, categories, onClose, onSaved, onDe
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
-  const noteField = useRef<HTMLTextAreaElement>(null);
-
-  useLayoutEffect(() => {
-    if (!noteField.current) return;
-    noteField.current.style.height = "auto";
-    noteField.current.style.height = `${noteField.current.scrollHeight}px`;
-  }, [note]);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setSaving(true); setError("");
@@ -606,7 +613,7 @@ function EditTransactionDrawer({ transaction, categories, onClose, onSaved, onDe
       <label className="field-label">Category<input list="ledger-categories" value={category} onChange={(event) => setCategory(event.target.value)} maxLength={30} required /></label>
       <datalist id="ledger-categories">{categories.map((item) => <option value={item.name} key={item.id} />)}</datalist>
       <div className="edit-category-chips" aria-label="Quick category selection">{categories.map((item) => <button type="button" className={category === item.name ? "active" : ""} key={item.id} onClick={() => setCategory(item.name)}><span>{item.emoji}</span>{item.name}</button>)}</div>
-      <label className="field-label">Note<textarea ref={noteField} className="auto-grow-note" rows={1} value={note} onChange={(event) => setNote(event.target.value)} maxLength={240} required /></label>
+      <label className="field-label">Note<AutoGrowingNoteInput value={note} onChange={setNote} /></label>
       <label className="field-label">Amount<div className="edit-amount"><span>A$</span><input inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} required /></div></label>
       <div className="entry-context"><span>{transaction.type === "income" ? "Income" : "Expense"}</span><span>{transaction.account}</span><span>{transaction.occurredAt}</span></div>
       {error && <p className="form-error">{error}</p>}
