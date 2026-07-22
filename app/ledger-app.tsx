@@ -16,7 +16,7 @@ type Transaction = {
 };
 
 type LedgerCategory = { id: string; name: string; emoji: string };
-type View = "overview" | "reports" | "personalization" | "ai";
+type View = "overview" | "reports" | "personalization";
 type LedgerRole = "owner" | "family";
 
 const categoryMeta: Record<string, { emoji: string; color: string }> = {
@@ -66,21 +66,6 @@ export function LedgerApp() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [notice, setNotice] = useState("");
-  const [importText, setImportText] = useState(`{
-  "transactions": [
-    {
-      "date": "${today}",
-      "type": "expense",
-      "amount": 12.80,
-      "currency": "AUD",
-      "category": "Food",
-      "account": "Everyday",
-      "note": "Lunch at a neighbourhood cafe",
-      "tags": ["receipt"],
-      "source": "screenshot"
-    }
-  ]
-}`);
 
   const loadTransactions = async () => {
     try {
@@ -179,18 +164,6 @@ export function LedgerApp() {
     window.setTimeout(() => setNotice(""), 2600);
   };
 
-  const exportLedger = () => {
-    const payload = JSON.stringify({ exportedAt: new Date().toISOString(), currency, transactions }, null, 2);
-    const blob = new Blob([payload], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `daylight-ledger-${today}.json`;
-    anchor.click();
-    URL.revokeObjectURL(url);
-    setNotice("Ledger JSON exported.");
-  };
-
   const exportCsv = () => {
     const escapeCsv = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`;
     const rows = transactions.map((item) => [
@@ -210,21 +183,6 @@ export function LedgerApp() {
     anchor.click();
     URL.revokeObjectURL(url);
     setNotice("CSV exported.");
-  };
-
-  const importLedger = async () => {
-    try {
-      const parsed = JSON.parse(importText);
-      const body = Array.isArray(parsed) ? { transactions: parsed } : parsed;
-      const response = await fetch("/api/transactions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Import failed.");
-      await loadTransactions();
-      setNotice(`${data.count} transaction${data.count === 1 ? "" : "s"} imported.`);
-      setView("overview");
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "The JSON format is not valid.");
-    }
   };
 
   const removeTransaction = async (id: string) => {
@@ -258,7 +216,6 @@ export function LedgerApp() {
           <NavItem active={view === "overview"} icon="⌂" label="Today" onClick={() => setView("overview")} />
           <NavItem active={view === "reports"} icon="↗" label="Reports" onClick={() => setView("reports")} />
           {canEdit && <NavItem active={view === "personalization"} icon="✎" label="Personalization" onClick={() => setView("personalization")} />}
-          <NavItem active={view === "ai"} icon="✦" label="AI Desk" onClick={() => setView("ai")} />
         </nav>
         <div className="sidebar-foot">
           <div className="sync-dot"><span /> Data saved</div>
@@ -270,8 +227,8 @@ export function LedgerApp() {
       <section className="workspace">
         <header className="topbar">
           <div>
-            <p className="eyebrow">{view === "overview" ? "Today under southern skies" : view === "reports" ? "Spending insights" : view === "personalization" ? "Make it yours" : "Built for ChatGPT"}</p>
-            <h1>{view === "overview" ? "Money, in a clearer light." : view === "reports" ? "Where did the money go?" : view === "personalization" ? "Your quickest categories." : "From screenshot to ledger."}</h1>
+            <p className="eyebrow">{view === "overview" ? "Today under southern skies" : view === "reports" ? "Spending insights" : "Make it yours"}</p>
+            <h1>{view === "overview" ? "Money, in a clearer light." : view === "reports" ? "Where did the money go?" : "Your quickest categories."}</h1>
           </div>
           <div className="topbar-actions"><span className={`access-badge ${canEdit ? "owner" : "family"}`}>{canEdit ? "Owner" : "Family · View only"}</span>{canEdit && view === "reports" && <button className="personalize-shortcut" onClick={() => setView("personalization")}>Personalize</button>}{canEdit && <button className="add-button" onClick={() => setDrawerOpen(true)}><span>＋</span> Add transaction</button>}</div>
         </header>
@@ -365,38 +322,12 @@ export function LedgerApp() {
 
         {view === "personalization" && canEdit && <PersonalizationPanel categories={categories} onChanged={loadCategories} />}
 
-        {view === "ai" && (
-          <div className="ai-grid">
-            <section className="ai-intro-card">
-              <span className="ai-orb">✦</span>
-              <p className="eyebrow">Made for screenshot bookkeeping</p>
-              <h2>Send the bill to ChatGPT.<br />Let AI do the sorting.</h2>
-              <p>ChatGPT can read the date, amount, note and category, then return the clean format below. Paste it here and import.</p>
-              <ol><li><span>1</span>Send a bill screenshot in our chat</li><li><span>2</span>Ask for Daylight Ledger JSON</li><li><span>3</span>Paste, review and import</li></ol>
-              <button onClick={() => copyText("Please turn this bill screenshot into valid Daylight Ledger JSON. Include these fields: date, type, amount, currency, category, account, note, tags and source. Write note in English with the merchant or location on the first line, a blank line, then one purchased item per line in the format Item - amount AUD. Set source to screenshot, and output valid JSON only.", "Prompt for ChatGPT copied.")}>Copy prompt for ChatGPT</button>
-            </section>
-            {canEdit && <section className="import-card">
-              <div className="section-heading"><div><p>Structured entry point</p><h2>Import ledger JSON</h2></div><span>1–300 entries</span></div>
-              <textarea value={importText} onChange={(event) => setImportText(event.target.value)} spellCheck={false} aria-label="Ledger JSON" />
-              <div className="import-actions"><button className="secondary-button" onClick={() => setImportText("")}>Clear</button><button className="primary-button" onClick={importLedger}>Review and import</button></div>
-            </section>}
-            <section className="data-card">
-              <div><span>⇩</span><div><h3>Download backup</h3><p>A complete JSON copy of every ledger entry.</p></div></div>
-              <button onClick={exportLedger}>Backup JSON</button>
-            </section>
-            <section className="data-card">
-              <div><span>☰</span><div><h3>Today's summary</h3><p>A clear note ready to save or share.</p></div></div>
-              <button onClick={() => copyText(dailySummary, "Today's summary copied.")}>Copy summary</button>
-            </section>
-          </div>
-        )}
       </section>
 
       <nav className="mobile-nav" aria-label="Mobile navigation">
         <NavItem active={view === "overview"} icon="⌂" label="Today" onClick={() => setView("overview")} />
         <NavItem active={view === "reports"} icon="↗" label="Reports" onClick={() => setView("reports")} />
         {canEdit ? <button className="mobile-add" onClick={() => setDrawerOpen(true)} aria-label="Add transaction">＋</button> : <button className="mobile-readonly" disabled aria-label="View-only access">◉</button>}
-        <NavItem active={view === "ai"} icon="✦" label="AI" onClick={() => setView("ai")} />
         <button onClick={logout}><span>↪</span><em>Log out</em></button>
       </nav>
 
