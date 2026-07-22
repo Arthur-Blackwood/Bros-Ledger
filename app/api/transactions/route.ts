@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
 import { NextRequest, NextResponse } from "next/server";
+import { readSession } from "../../ledger-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -85,6 +86,8 @@ function normalize(input: TransactionInput) {
 
 export async function GET(request: NextRequest) {
   try {
+    const session = await readSession(request);
+    if (!session) return NextResponse.json({ error: "Authentication required." }, { status: 401, headers: { "Cache-Control": "no-store" } });
     const db = await getDatabase();
     const date = request.nextUrl.searchParams.get("date");
     const limit = Math.min(Math.max(Number(request.nextUrl.searchParams.get("limit") ?? 500), 1), 1000);
@@ -106,14 +109,17 @@ export async function GET(request: NextRequest) {
       source: row.source,
       createdAt: row.created_at,
     }));
-    return NextResponse.json({ transactions });
+    return NextResponse.json({ transactions }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Could not load the ledger." }, { status: 500 });
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Could not load the ledger." }, { status: 500, headers: { "Cache-Control": "no-store" } });
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
+    const session = await readSession(request);
+    if (!session) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
+    if (session.role !== "owner") return NextResponse.json({ error: "This account has view-only access." }, { status: 403 });
     const db = await getDatabase();
     const body = await request.json();
     const inputs: TransactionInput[] = Array.isArray(body)
@@ -135,6 +141,9 @@ export async function POST(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
+    const session = await readSession(request);
+    if (!session) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
+    if (session.role !== "owner") return NextResponse.json({ error: "This account has view-only access." }, { status: 403 });
     const id = request.nextUrl.searchParams.get("id");
     if (!id) throw new Error("A transaction ID is required.");
     const body = await request.json();
@@ -158,6 +167,9 @@ export async function PATCH(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
+    const session = await readSession(request);
+    if (!session) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
+    if (session.role !== "owner") return NextResponse.json({ error: "This account has view-only access." }, { status: 403 });
     const id = request.nextUrl.searchParams.get("id");
     if (!id) throw new Error("A transaction ID is required.");
     const db = await getDatabase();

@@ -17,6 +17,7 @@ type Transaction = {
 };
 
 type View = "overview" | "reports" | "ai";
+type LedgerRole = "owner" | "family";
 
 const categoryMeta: Record<string, { emoji: string; color: string }> = {
   Food: { emoji: "🍜", color: "#c96745" },
@@ -42,15 +43,6 @@ const dateShift = (dateKey: string, amount: number) => {
   return toDateKey(date);
 };
 
-const demoTransactions = (today: string): Transaction[] => [
-  { id: "demo-1", occurredAt: today, type: "expense", amountCents: 1850, currency: "AUD", merchant: "Edition Roasters", category: "Food", account: "Everyday", note: "Brunch", tags: ["Friends"], source: "demo" },
-  { id: "demo-2", occurredAt: today, type: "expense", amountCents: 480, currency: "AUD", merchant: "Sydney Metro", category: "Transport", account: "Everyday", note: "", tags: [], source: "demo" },
-  { id: "demo-3", occurredAt: today, type: "expense", amountCents: 3290, currency: "AUD", merchant: "MUJI", category: "Shopping", account: "Credit", note: "Home storage", tags: ["Home"], source: "demo" },
-  { id: "demo-4", occurredAt: dateShift(today, -1), type: "income", amountCents: 320000, currency: "AUD", merchant: "Project payment", category: "Income", account: "Savings", note: "", tags: [], source: "demo" },
-  { id: "demo-5", occurredAt: dateShift(today, -1), type: "expense", amountCents: 2460, currency: "AUD", merchant: "Woolworths", category: "Home", account: "Everyday", note: "Weekly groceries", tags: [], source: "demo" },
-  { id: "demo-6", occurredAt: dateShift(today, -3), type: "expense", amountCents: 1550, currency: "AUD", merchant: "Palace Cinemas", category: "Fun", account: "Credit", note: "", tags: [], source: "demo" },
-];
-
 const money = (cents: number, currency = "AUD", signed = false) => {
   const value = cents / 100;
   const text = new Intl.NumberFormat("en-AU", { style: "currency", currency, minimumFractionDigits: 2 }).format(Math.abs(value));
@@ -64,6 +56,8 @@ const longDate = (dateKey: string) => new Intl.DateTimeFormat("en-AU", {
 
 export function LedgerApp() {
   const today = useMemo(() => toDateKey(), []);
+  const [role, setRole] = useState<LedgerRole | null>(null);
+  const [authChecking, setAuthChecking] = useState(true);
   const [view, setView] = useState<View>("overview");
   const [selectedDate, setSelectedDate] = useState(today);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -92,19 +86,41 @@ export function LedgerApp() {
     try {
       const response = await fetch("/api/transactions", { cache: "no-store" });
       const data = await response.json();
+      if (response.status === 401) {
+        setRole(null);
+        setTransactions([]);
+        return;
+      }
       if (!response.ok) throw new Error(data.error || "Could not load the ledger.");
       setTransactions(data.transactions ?? []);
-    } catch {
-      setNotice("The ledger is temporarily offline, so preview data is being shown.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "The ledger is temporarily offline.");
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { void loadTransactions(); }, []);
+  useEffect(() => {
+    const checkSession = async () => {
+      try {
+        const response = await fetch("/api/auth/session", { cache: "no-store" });
+        const data = await response.json();
+        setRole(response.ok ? data.role : null);
+      } catch { setRole(null); }
+      finally { setAuthChecking(false); }
+    };
+    void checkSession();
+  }, []);
 
-  const isDemo = !loading && transactions.length === 0;
-  const visibleTransactions = isDemo ? demoTransactions(today) : transactions;
+  useEffect(() => {
+    if (role) {
+      setLoading(true);
+      void loadTransactions();
+    }
+  }, [role]);
+
+  const canEdit = role === "owner";
+  const visibleTransactions = transactions;
   const currency = visibleTransactions[0]?.currency ?? "AUD";
   const selectedItems = visibleTransactions.filter((item) => item.occurredAt === selectedDate);
   const selectedExpense = selectedItems.filter((item) => item.type === "expense").reduce((sum, item) => sum + item.amountCents, 0);
@@ -194,13 +210,24 @@ export function LedgerApp() {
   };
 
   const removeTransaction = async (id: string) => {
-    if (id.startsWith("demo-")) return;
     const response = await fetch(`/api/transactions?id=${encodeURIComponent(id)}`, { method: "DELETE" });
     if (response.ok) {
       setTransactions((items) => items.filter((item) => item.id !== id));
       setNotice("Transaction deleted.");
     }
   };
+
+  const logout = async () => {
+    await fetch("/api/auth/logout", { method: "POST" });
+    setRole(null);
+    setTransactions([]);
+    setDrawerOpen(false);
+    setEditingTransaction(null);
+    setView("overview");
+  };
+
+  if (authChecking) return <AuthLoading />;
+  if (!role) return <PinGate onAuthenticated={setRole} />;
 
   return (
     <main className="app-shell">
@@ -215,7 +242,8 @@ export function LedgerApp() {
         </nav>
         <div className="sidebar-foot">
           <div className="sync-dot"><span /> Data saved</div>
-          <p>Home currency · AUD</p>
+          <p>{canEdit ? "Owner access" : "Family access · View only"}</p>
+          <button className="logout-button" onClick={logout}>Log out</button>
         </div>
       </aside>
 
@@ -225,11 +253,10 @@ export function LedgerApp() {
             <p className="eyebrow">{view === "overview" ? "Today under southern skies" : view === "reports" ? "Spending insights" : "Built for ChatGPT"}</p>
             <h1>{view === "overview" ? "Money, in a clearer light." : view === "reports" ? "Where did the money go?" : "From screenshot to ledger."}</h1>
           </div>
-          <button className="add-button" onClick={() => setDrawerOpen(true)}><span>＋</span> Add transaction</button>
+          <div className="topbar-actions"><span className={`access-badge ${canEdit ? "owner" : "family"}`}>{canEdit ? "Owner" : "Family · View only"}</span>{canEdit && <button className="add-button" onClick={() => setDrawerOpen(true)}><span>＋</span> Add transaction</button>}</div>
         </header>
 
         {notice && <div className="notice" role="status">{notice}<button onClick={() => setNotice("")}>×</button></div>}
-        {isDemo && <div className="demo-banner"><span>Preview data</span><p>These examples disappear after your first entry.</p><button onClick={() => setDrawerOpen(true)}>Start tracking</button></div>}
 
         {view === "overview" && (
           <div className="dashboard-grid">
@@ -263,9 +290,9 @@ export function LedgerApp() {
                     <div className="category-icon" style={{ background: `${categoryMeta[item.category]?.color ?? categoryMeta.Other.color}30` }}>{categoryMeta[item.category]?.emoji ?? "✨"}</div>
                     <div className="transaction-copy"><h3>{item.merchant}</h3><p>{item.category} · {item.account}{item.note ? ` · ${item.note}` : ""}</p></div>
                     <div className={`transaction-amount ${item.type}`}><strong>{item.type === "income" ? "+" : "−"}{money(item.amountCents, item.currency)}</strong>{item.source === "screenshot" && <span>Screenshot import</span>}</div>
-                    {!item.id.startsWith("demo-") && <button className="delete-button" onClick={() => removeTransaction(item.id)} aria-label={`Delete ${item.merchant}`}>×</button>}
+                    {canEdit && <button className="delete-button" onClick={() => removeTransaction(item.id)} aria-label={`Delete ${item.merchant}`}>×</button>}
                   </article>
-                )) : <div className="empty-state"><span>🌿</span><h3>A quiet day so far</h3><p>Add the first entry when you are ready.</p><button onClick={() => setDrawerOpen(true)}>Add transaction</button></div>}
+                )) : <div className="empty-state"><span>🌿</span><h3>A quiet day so far</h3><p>{canEdit ? "Add the first entry when you are ready." : "No transactions are recorded for this day."}</p>{canEdit && <button onClick={() => setDrawerOpen(true)}>Add transaction</button>}</div>}
               </div>
             </section>
 
@@ -303,15 +330,15 @@ export function LedgerApp() {
                   const dayNet = items.reduce((sum, item) => sum + (item.type === "income" ? item.amountCents : -item.amountCents), 0);
                   return <section className="ledger-day" key={date}>
                     <div className="ledger-day-head"><strong>{longDate(date)}</strong><span>{items.length} {items.length === 1 ? "entry" : "entries"}</span><b>{money(dayNet, items[0]?.currency ?? currency, true)}</b></div>
-                    {items.map((item) => <button className="ledger-entry-row" key={item.id} onClick={() => setEditingTransaction(item)}>
+                    {items.map((item) => <button className="ledger-entry-row" key={item.id} onClick={() => canEdit && setEditingTransaction(item)} disabled={!canEdit} aria-label={canEdit ? `Edit ${item.merchant}` : `${item.category}, ${item.merchant}, view only`}>
                       <span className="ledger-category"><i style={{ background: `${categoryMeta[item.category]?.color ?? categoryMeta.Other.color}30` }}>{categoryMeta[item.category]?.emoji ?? "✨"}</i><b>{item.category}</b></span>
                       <span className="ledger-note">{item.merchant || "No note"}</span>
                       <strong className={item.type}>{item.type === "income" ? "+" : "−"}{money(item.amountCents, item.currency)}</strong>
-                      <span className="ledger-edit" aria-label={`Edit ${item.merchant}`}>Edit</span>
+                      <span className="ledger-edit">{canEdit ? "Edit" : "View"}</span>
                     </button>)}
                   </section>;
                 })}
-              </div></div> : <div className="ledger-empty"><span>🌿</span><h3>No entries yet</h3><p>Add a transaction and it will appear here.</p><button onClick={() => setDrawerOpen(true)}>Add transaction</button></div>}
+              </div></div> : <div className="ledger-empty"><span>🌿</span><h3>No entries yet</h3><p>{canEdit ? "Add a transaction and it will appear here." : "There are no entries to display."}</p>{canEdit && <button onClick={() => setDrawerOpen(true)}>Add transaction</button>}</div>}
             </section>
           </div>
         )}
@@ -326,14 +353,14 @@ export function LedgerApp() {
               <ol><li><span>1</span>Send a bill screenshot in our chat</li><li><span>2</span>Ask for Daylight Ledger JSON</li><li><span>3</span>Paste, review and import</li></ol>
               <button onClick={() => copyText("Please turn this bill screenshot into valid Daylight Ledger JSON. Include these fields: date, type, amount, currency, merchant, category, account, note, tags and source. Set source to screenshot. Use English only and output valid JSON only.", "Prompt for ChatGPT copied.")}>Copy prompt for ChatGPT</button>
             </section>
-            <section className="import-card">
+            {canEdit && <section className="import-card">
               <div className="section-heading"><div><p>Structured entry point</p><h2>Import ledger JSON</h2></div><span>1–300 entries</span></div>
               <textarea value={importText} onChange={(event) => setImportText(event.target.value)} spellCheck={false} aria-label="Ledger JSON" />
               <div className="import-actions"><button className="secondary-button" onClick={() => setImportText("")}>Clear</button><button className="primary-button" onClick={importLedger}>Review and import</button></div>
-            </section>
+            </section>}
             <section className="data-card">
-              <div><span>⇩</span><div><h3>Full ledger backup</h3><p>Standard JSON for AI analysis or migration.</p></div></div>
-              <button onClick={exportLedger}>Export JSON</button>
+              <div><span>⇩</span><div><h3>Download backup</h3><p>A complete JSON copy of every ledger entry.</p></div></div>
+              <button onClick={exportLedger}>Backup JSON</button>
             </section>
             <section className="data-card">
               <div><span>☰</span><div><h3>Today's summary</h3><p>A clear note ready to save or share.</p></div></div>
@@ -346,15 +373,56 @@ export function LedgerApp() {
       <nav className="mobile-nav" aria-label="Mobile navigation">
         <NavItem active={view === "overview"} icon="⌂" label="Today" onClick={() => setView("overview")} />
         <NavItem active={view === "reports"} icon="↗" label="Reports" onClick={() => setView("reports")} />
-        <button className="mobile-add" onClick={() => setDrawerOpen(true)} aria-label="Add transaction">＋</button>
+        {canEdit ? <button className="mobile-add" onClick={() => setDrawerOpen(true)} aria-label="Add transaction">＋</button> : <button className="mobile-readonly" disabled aria-label="View-only access">◉</button>}
         <NavItem active={view === "ai"} icon="✦" label="AI" onClick={() => setView("ai")} />
-        <button><span>⚙</span><em>Settings</em></button>
+        <button onClick={logout}><span>↪</span><em>Log out</em></button>
       </nav>
 
-      {drawerOpen && <TransactionDrawer today={today} onClose={() => setDrawerOpen(false)} onSaved={async () => { setDrawerOpen(false); await loadTransactions(); setNotice("Transaction saved."); }} />}
-      {editingTransaction && <EditTransactionDrawer transaction={editingTransaction} onClose={() => setEditingTransaction(null)} onSaved={async () => { setEditingTransaction(null); await loadTransactions(); setNotice("Entry updated."); }} />}
+      {canEdit && drawerOpen && <TransactionDrawer today={today} onClose={() => setDrawerOpen(false)} onSaved={async () => { setDrawerOpen(false); await loadTransactions(); setNotice("Transaction saved."); }} />}
+      {canEdit && editingTransaction && <EditTransactionDrawer transaction={editingTransaction} onClose={() => setEditingTransaction(null)} onSaved={async () => { setEditingTransaction(null); await loadTransactions(); setNotice("Entry updated."); }} />}
     </main>
   );
+}
+
+function AuthLoading() {
+  return <main className="auth-shell"><div className="auth-card auth-loading"><span className="auth-mark">D</span><p>Opening your private ledger…</p></div></main>;
+}
+
+function PinGate({ onAuthenticated }: { onAuthenticated: (role: LedgerRole) => void }) {
+  const [pin, setPin] = useState("");
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault(); setSubmitting(true); setError("");
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pin }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Could not sign in.");
+      setPin("");
+      onAuthenticated(data.role);
+    } catch (signInError) { setError(signInError instanceof Error ? signInError.message : "Could not sign in."); }
+    finally { setSubmitting(false); }
+  };
+
+  return <main className="auth-shell">
+    <section className="auth-card">
+      <div className="auth-mark">D</div>
+      <p className="eyebrow">Daylight Ledger</p>
+      <h1>Your family ledger,<br />kept private.</h1>
+      <p className="auth-copy">Enter your five-digit PIN to continue. Your access level is selected automatically.</p>
+      <form onSubmit={submit}>
+        <label>Access PIN<input autoFocus type="password" inputMode="numeric" autoComplete="current-password" pattern="[0-9]{5}" maxLength={5} value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 5))} placeholder="•••••" aria-describedby={error ? "pin-error" : undefined} required /></label>
+        {error && <p className="auth-error" id="pin-error" role="alert">{error}</p>}
+        <button disabled={submitting || pin.length !== 5}>{submitting ? "Checking…" : "Unlock ledger"}</button>
+      </form>
+      <div className="auth-assurance"><span>●</span><p><b>Private by design</b><br />Ledger data is never loaded before sign-in.</p></div>
+    </section>
+  </main>;
 }
 
 function NavItem({ active, icon, label, onClick }: { active: boolean; icon: string; label: string; onClick: () => void }) {

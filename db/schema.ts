@@ -15,3 +15,10 @@ export const transactions = sqliteTable("transactions", {
   source: text("source").notNull().default("manual"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
+
+export const authAttempts = sqliteTable("auth_attempts", {
+  clientKey: text("client_key").primaryKey(),
+  failedCount: integer("failed_count").notNull().default(0),
+  windowStarted: integer("window_started").notNull(),
+  lockedUntil: integer("locked_until").notNull().default(0),
+});
