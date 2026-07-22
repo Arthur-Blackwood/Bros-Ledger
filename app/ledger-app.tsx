@@ -112,7 +112,6 @@ export function LedgerApp() {
   const monthItems = visibleTransactions.filter((item) => item.occurredAt.startsWith(monthKey));
   const monthExpense = monthItems.filter((item) => item.type === "expense").reduce((sum, item) => sum + item.amountCents, 0);
   const monthIncome = monthItems.filter((item) => item.type === "income").reduce((sum, item) => sum + item.amountCents, 0);
-  const totalBalance = visibleTransactions.reduce((sum, item) => sum + (item.type === "income" ? item.amountCents : -item.amountCents), 0);
 
   const categoryTotals = useMemo(() => {
     const totals: Record<string, number> = {};
@@ -203,11 +202,11 @@ export function LedgerApp() {
         {view === "overview" && (
           <div className="dashboard-grid">
             <section className="balance-card">
-              <div className="balance-head"><span>Current balance</span><button aria-label="Balance options">•••</button></div>
-              <strong>{money(totalBalance, currency)}</strong>
+              <div className="balance-head"><span>Spent this month</span><button aria-label="Spending options">•••</button></div>
+              <strong>{money(monthExpense, currency)}</strong>
               <div className="balance-meta">
                 <div><span className="legend-dot income" />Income this month <b>{money(monthIncome, currency)}</b></div>
-                <div><span className="legend-dot expense" />Spent this month <b>{money(monthExpense, currency)}</b></div>
+                <div><span className="legend-dot expense" />Net cash flow <b>{money(monthIncome - monthExpense, currency, true)}</b></div>
               </div>
               <div className="balance-art" aria-hidden="true"><i /><i /><i /></div>
             </section>
