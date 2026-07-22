@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 type Transaction = {
   id: string;
@@ -563,6 +563,13 @@ function EditTransactionDrawer({ transaction, categories, onClose, onSaved, onDe
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
+  const noteField = useRef<HTMLTextAreaElement>(null);
+
+  useLayoutEffect(() => {
+    if (!noteField.current) return;
+    noteField.current.style.height = "auto";
+    noteField.current.style.height = `${noteField.current.scrollHeight}px`;
+  }, [note]);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setSaving(true); setError("");
@@ -599,7 +606,7 @@ function EditTransactionDrawer({ transaction, categories, onClose, onSaved, onDe
       <label className="field-label">Category<input list="ledger-categories" value={category} onChange={(event) => setCategory(event.target.value)} maxLength={30} required /></label>
       <datalist id="ledger-categories">{categories.map((item) => <option value={item.name} key={item.id} />)}</datalist>
       <div className="edit-category-chips" aria-label="Quick category selection">{categories.map((item) => <button type="button" className={category === item.name ? "active" : ""} key={item.id} onClick={() => setCategory(item.name)}><span>{item.emoji}</span>{item.name}</button>)}</div>
-      <label className="field-label">Note<input value={note} onChange={(event) => setNote(event.target.value)} maxLength={240} required /></label>
+      <label className="field-label">Note<textarea ref={noteField} className="auto-grow-note" rows={1} value={note} onChange={(event) => setNote(event.target.value)} maxLength={240} required /></label>
       <label className="field-label">Amount<div className="edit-amount"><span>A$</span><input inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} required /></div></label>
       <div className="entry-context"><span>{transaction.type === "income" ? "Income" : "Expense"}</span><span>{transaction.account}</span><span>{transaction.occurredAt}</span></div>
       {error && <p className="form-error">{error}</p>}
