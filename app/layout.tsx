@@ -13,7 +13,12 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title,
     description,
-    icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },
+    manifest: "/manifest.webmanifest",
+    icons: {
+      icon: [{ url: "/favicon.svg", type: "image/svg+xml" }, { url: "/icon-192.png", sizes: "192x192", type: "image/png" }],
+      shortcut: "/favicon.svg",
+      apple: "/icon-192.png",
+    },
     openGraph: { title, description, type: "website", images: [{ url: image, width: 2184, height: 941, alt: "Daylight Ledger" }] },
     twitter: { card: "summary_large_image", title, description, images: [image] },
   };
