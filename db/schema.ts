@@ -22,3 +22,11 @@ export const authAttempts = sqliteTable("auth_attempts", {
   windowStarted: integer("window_started").notNull(),
   lockedUntil: integer("locked_until").notNull().default(0),
 });
+
+export const ledgerCategories = sqliteTable("ledger_categories", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  emoji: text("emoji").notNull().default("✨"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});

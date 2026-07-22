@@ -16,7 +16,8 @@ type Transaction = {
   source: string;
 };
 
-type View = "overview" | "reports" | "ai";
+type LedgerCategory = { id: string; name: string; emoji: string };
+type View = "overview" | "reports" | "personalization" | "ai";
 type LedgerRole = "owner" | "family";
 
 const categoryMeta: Record<string, { emoji: string; color: string }> = {
@@ -61,6 +62,7 @@ export function LedgerApp() {
   const [view, setView] = useState<View>("overview");
   const [selectedDate, setSelectedDate] = useState(today);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [categories, setCategories] = useState<LedgerCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
@@ -100,6 +102,22 @@ export function LedgerApp() {
     }
   };
 
+  const loadCategories = async () => {
+    try {
+      const response = await fetch("/api/categories", { cache: "no-store" });
+      const data = await response.json();
+      if (response.status === 401) {
+        setRole(null);
+        setCategories([]);
+        return;
+      }
+      if (!response.ok) throw new Error(data.error || "Could not load categories.");
+      setCategories(data.categories ?? []);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Could not load categories.");
+    }
+  };
+
   useEffect(() => {
     const checkSession = async () => {
       try {
@@ -116,11 +134,13 @@ export function LedgerApp() {
     if (role) {
       setLoading(true);
       void loadTransactions();
+      void loadCategories();
     }
   }, [role]);
 
   const canEdit = role === "owner";
   const visibleTransactions = transactions;
+  const categoryEmoji = (name: string) => categories.find((category) => category.name === name)?.emoji ?? categoryMeta[name]?.emoji ?? "✨";
   const currency = visibleTransactions[0]?.currency ?? "AUD";
   const selectedItems = visibleTransactions.filter((item) => item.occurredAt === selectedDate);
   const selectedExpense = selectedItems.filter((item) => item.type === "expense").reduce((sum, item) => sum + item.amountCents, 0);
@@ -221,6 +241,7 @@ export function LedgerApp() {
     await fetch("/api/auth/logout", { method: "POST" });
     setRole(null);
     setTransactions([]);
+    setCategories([]);
     setDrawerOpen(false);
     setEditingTransaction(null);
     setView("overview");
@@ -238,6 +259,7 @@ export function LedgerApp() {
         <nav className="main-nav" aria-label="Main navigation">
           <NavItem active={view === "overview"} icon="⌂" label="Today" onClick={() => setView("overview")} />
           <NavItem active={view === "reports"} icon="↗" label="Reports" onClick={() => setView("reports")} />
+          {canEdit && <NavItem active={view === "personalization"} icon="✎" label="Personalization" onClick={() => setView("personalization")} />}
           <NavItem active={view === "ai"} icon="✦" label="AI Desk" onClick={() => setView("ai")} />
         </nav>
         <div className="sidebar-foot">
@@ -250,10 +272,10 @@ export function LedgerApp() {
       <section className="workspace">
         <header className="topbar">
           <div>
-            <p className="eyebrow">{view === "overview" ? "Today under southern skies" : view === "reports" ? "Spending insights" : "Built for ChatGPT"}</p>
-            <h1>{view === "overview" ? "Money, in a clearer light." : view === "reports" ? "Where did the money go?" : "From screenshot to ledger."}</h1>
+            <p className="eyebrow">{view === "overview" ? "Today under southern skies" : view === "reports" ? "Spending insights" : view === "personalization" ? "Make it yours" : "Built for ChatGPT"}</p>
+            <h1>{view === "overview" ? "Money, in a clearer light." : view === "reports" ? "Where did the money go?" : view === "personalization" ? "Your quickest categories." : "From screenshot to ledger."}</h1>
           </div>
-          <div className="topbar-actions"><span className={`access-badge ${canEdit ? "owner" : "family"}`}>{canEdit ? "Owner" : "Family · View only"}</span>{canEdit && <button className="add-button" onClick={() => setDrawerOpen(true)}><span>＋</span> Add transaction</button>}</div>
+          <div className="topbar-actions"><span className={`access-badge ${canEdit ? "owner" : "family"}`}>{canEdit ? "Owner" : "Family · View only"}</span>{canEdit && view === "reports" && <button className="personalize-shortcut" onClick={() => setView("personalization")}>Personalize</button>}{canEdit && <button className="add-button" onClick={() => setDrawerOpen(true)}><span>＋</span> Add transaction</button>}</div>
         </header>
 
         {notice && <div className="notice" role="status">{notice}<button onClick={() => setNotice("")}>×</button></div>}
@@ -287,7 +309,7 @@ export function LedgerApp() {
               <div className="transaction-list">
                 {loading ? <div className="empty-state">Opening your ledger…</div> : selectedItems.length ? selectedItems.map((item) => (
                   <article className="transaction" key={item.id}>
-                    <div className="category-icon" style={{ background: `${categoryMeta[item.category]?.color ?? categoryMeta.Other.color}30` }}>{categoryMeta[item.category]?.emoji ?? "✨"}</div>
+                    <div className="category-icon" style={{ background: `${categoryMeta[item.category]?.color ?? categoryMeta.Other.color}30` }}>{categoryEmoji(item.category)}</div>
                     <div className="transaction-copy"><h3>{item.merchant}</h3><p>{item.category} · {item.account}{item.note ? ` · ${item.note}` : ""}</p></div>
                     <div className={`transaction-amount ${item.type}`}><strong>{item.type === "income" ? "+" : "−"}{money(item.amountCents, item.currency)}</strong>{item.source === "screenshot" && <span>Screenshot import</span>}</div>
                     {canEdit && <button className="delete-button" onClick={() => removeTransaction(item.id)} aria-label={`Delete ${item.merchant}`}>×</button>}
@@ -316,7 +338,7 @@ export function LedgerApp() {
               <div className="section-heading"><div><p>Life in numbers</p><h2>Spending by category</h2></div><span>{categoryTotals.length} categories</span></div>
               <div className="category-visual">
                 <div className="donut" style={{ background: buildDonut(categoryTotals) }}><div><strong>{categoryTotals[0]?.[0] ?? "None yet"}</strong><span>Top spend</span></div></div>
-                <div className="category-list">{categoryTotals.length ? categoryTotals.slice(0, 5).map(([name, value]) => <div key={name}><span className="category-swatch" style={{ background: categoryMeta[name]?.color ?? categoryMeta.Other.color }} /> <b>{categoryMeta[name]?.emoji ?? "✨"} {name}</b><span>{money(value, currency)} · {monthExpense ? Math.round(value / monthExpense * 100) : 0}%</span></div>) : <p>Your spending mix will appear after a few entries.</p>}</div>
+                <div className="category-list">{categoryTotals.length ? categoryTotals.slice(0, 5).map(([name, value]) => <div key={name}><span className="category-swatch" style={{ background: categoryMeta[name]?.color ?? categoryMeta.Other.color }} /> <b>{categoryEmoji(name)} {name}</b><span>{money(value, currency)} · {monthExpense ? Math.round(value / monthExpense * 100) : 0}%</span></div>) : <p>Your spending mix will appear after a few entries.</p>}</div>
               </div>
             </section>
             <section className="report-table-card entry-ledger-card">
@@ -331,7 +353,7 @@ export function LedgerApp() {
                   return <section className="ledger-day" key={date}>
                     <div className="ledger-day-head"><strong>{longDate(date)}</strong><span>{items.length} {items.length === 1 ? "entry" : "entries"}</span><b>{money(dayNet, items[0]?.currency ?? currency, true)}</b></div>
                     {items.map((item) => <button className="ledger-entry-row" key={item.id} onClick={() => canEdit && setEditingTransaction(item)} disabled={!canEdit} aria-label={canEdit ? `Edit ${item.merchant}` : `${item.category}, ${item.merchant}, view only`}>
-                      <span className="ledger-category"><i style={{ background: `${categoryMeta[item.category]?.color ?? categoryMeta.Other.color}30` }}>{categoryMeta[item.category]?.emoji ?? "✨"}</i><b>{item.category}</b></span>
+                      <span className="ledger-category"><i style={{ background: `${categoryMeta[item.category]?.color ?? categoryMeta.Other.color}30` }}>{categoryEmoji(item.category)}</i><b>{item.category}</b></span>
                       <span className="ledger-note">{item.merchant || "No note"}</span>
                       <strong className={item.type}>{item.type === "income" ? "+" : "−"}{money(item.amountCents, item.currency)}</strong>
                       <span className="ledger-edit">{canEdit ? "Edit" : "View"}</span>
@@ -342,6 +364,8 @@ export function LedgerApp() {
             </section>
           </div>
         )}
+
+        {view === "personalization" && canEdit && <PersonalizationPanel categories={categories} onChanged={loadCategories} />}
 
         {view === "ai" && (
           <div className="ai-grid">
@@ -379,7 +403,7 @@ export function LedgerApp() {
       </nav>
 
       {canEdit && drawerOpen && <TransactionDrawer today={today} onClose={() => setDrawerOpen(false)} onSaved={async () => { setDrawerOpen(false); await loadTransactions(); setNotice("Transaction saved."); }} />}
-      {canEdit && editingTransaction && <EditTransactionDrawer transaction={editingTransaction} onClose={() => setEditingTransaction(null)} onSaved={async () => { setEditingTransaction(null); await loadTransactions(); setNotice("Entry updated."); }} />}
+      {canEdit && editingTransaction && <EditTransactionDrawer transaction={editingTransaction} categories={categories} onClose={() => setEditingTransaction(null)} onSaved={async () => { setEditingTransaction(null); await loadTransactions(); setNotice("Entry updated."); }} onDeleted={async () => { setEditingTransaction(null); await loadTransactions(); setNotice("Entry deleted."); }} />}
     </main>
   );
 }
@@ -425,6 +449,70 @@ function PinGate({ onAuthenticated }: { onAuthenticated: (role: LedgerRole) => v
   </main>;
 }
 
+function PersonalizationPanel({ categories, onChanged }: { categories: LedgerCategory[]; onChanged: () => Promise<void> }) {
+  const [editing, setEditing] = useState<LedgerCategory | null>(null);
+  const [name, setName] = useState("");
+  const [emoji, setEmoji] = useState("✨");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const beginEdit = (category: LedgerCategory) => {
+    setEditing(category); setName(category.name); setEmoji(category.emoji); setError("");
+  };
+
+  const beginAdd = () => {
+    setEditing(null); setName(""); setEmoji("✨"); setError("");
+  };
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault(); setSaving(true); setError("");
+    try {
+      const response = await fetch(editing ? `/api/categories?id=${encodeURIComponent(editing.id)}` : "/api/categories", {
+        method: editing ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, emoji }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Could not save the category.");
+      await onChanged();
+      beginAdd();
+    } catch (saveError) { setError(saveError instanceof Error ? saveError.message : "Could not save the category."); }
+    finally { setSaving(false); }
+  };
+
+  const remove = async () => {
+    if (!editing || !window.confirm(`Remove ${editing.name} from quick selection? Existing ledger entries will not be deleted.`)) return;
+    setSaving(true); setError("");
+    try {
+      const response = await fetch(`/api/categories?id=${encodeURIComponent(editing.id)}`, { method: "DELETE" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Could not remove the category.");
+      await onChanged();
+      beginAdd();
+    } catch (deleteError) { setError(deleteError instanceof Error ? deleteError.message : "Could not remove the category."); }
+    finally { setSaving(false); }
+  };
+
+  return <div className="personalization-grid">
+    <section className="category-library-card">
+      <div className="section-heading"><div><p>Quick selection</p><h2>Your categories</h2></div><span>{categories.length} saved</span></div>
+      <p className="personalization-copy">These appear as shortcuts whenever you edit an entry in Reports.</p>
+      <div className="category-library">{categories.map((category) => <button key={category.id} className={editing?.id === category.id ? "active" : ""} onClick={() => beginEdit(category)}><span>{category.emoji}</span><b>{category.name}</b><em>Edit</em></button>)}</div>
+      {!categories.length && <div className="category-library-empty">No quick categories yet.</div>}
+    </section>
+    <section className="category-editor-card">
+      <div className="section-heading"><div><p>Owner controls</p><h2>{editing ? "Edit category" : "Add category"}</h2></div>{editing && <button onClick={beginAdd}>Add new</button>}</div>
+      <form onSubmit={submit}>
+        <label className="field-label">Emoji<input className="emoji-input" value={emoji} onChange={(event) => setEmoji(event.target.value)} maxLength={8} placeholder="✨" required /></label>
+        <label className="field-label">Category name<input value={name} onChange={(event) => setName(event.target.value)} maxLength={30} placeholder="e.g. Subscriptions" required /></label>
+        <p className="category-editor-note">Renaming or removing a shortcut does not rewrite or delete existing ledger entries.</p>
+        {error && <p className="form-error">{error}</p>}
+        <div className="category-editor-actions">{editing && <button type="button" className="danger-button" onClick={remove} disabled={saving}>Remove</button>}<button className="save-category-button" disabled={saving}>{saving ? "Saving…" : editing ? "Save category" : "Add category"}</button></div>
+      </form>
+    </section>
+  </div>;
+}
+
 function NavItem({ active, icon, label, onClick }: { active: boolean; icon: string; label: string; onClick: () => void }) {
   return <button className={active ? "active" : ""} onClick={onClick}><span>{icon}</span><em>{label}</em></button>;
 }
@@ -467,11 +555,12 @@ function TransactionDrawer({ today, onClose, onSaved }: { today: string; onClose
   </div>;
 }
 
-function EditTransactionDrawer({ transaction, onClose, onSaved }: { transaction: Transaction; onClose: () => void; onSaved: () => void }) {
+function EditTransactionDrawer({ transaction, categories, onClose, onSaved, onDeleted }: { transaction: Transaction; categories: LedgerCategory[]; onClose: () => void; onSaved: () => void; onDeleted: () => void }) {
   const [category, setCategory] = useState(transaction.category);
   const [note, setNote] = useState(transaction.merchant);
   const [amount, setAmount] = useState((transaction.amountCents / 100).toFixed(2));
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
 
   const submit = async (event: FormEvent) => {
@@ -489,18 +578,32 @@ function EditTransactionDrawer({ transaction, onClose, onSaved }: { transaction:
     finally { setSaving(false); }
   };
 
+  const remove = async () => {
+    if (!window.confirm(`Delete ${transaction.merchant}? This cannot be undone.`)) return;
+    setDeleting(true); setError("");
+    try {
+      const response = await fetch(`/api/transactions?id=${encodeURIComponent(transaction.id)}`, { method: "DELETE" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Could not delete the entry.");
+      await onDeleted();
+    } catch (deleteError) { setError(deleteError instanceof Error ? deleteError.message : "Could not delete the entry."); }
+    finally { setDeleting(false); }
+  };
+
   return <div className="drawer-layer" role="dialog" aria-modal="true" aria-label="Edit entry">
     <button className="drawer-backdrop" onClick={onClose} aria-label="Close" />
     <form className="transaction-drawer edit-drawer" onSubmit={submit}>
       <div className="drawer-header"><div><p>{longDate(transaction.occurredAt)}</p><h2>Edit entry</h2></div><button type="button" onClick={onClose}>×</button></div>
       <p className="edit-intro">Update the three details used in your report and CSV exports.</p>
       <label className="field-label">Category<input list="ledger-categories" value={category} onChange={(event) => setCategory(event.target.value)} maxLength={30} required /></label>
-      <datalist id="ledger-categories">{categoryNames.map((name) => <option value={name} key={name} />)}</datalist>
+      <datalist id="ledger-categories">{categories.map((item) => <option value={item.name} key={item.id} />)}</datalist>
+      <div className="edit-category-chips" aria-label="Quick category selection">{categories.map((item) => <button type="button" className={category === item.name ? "active" : ""} key={item.id} onClick={() => setCategory(item.name)}><span>{item.emoji}</span>{item.name}</button>)}</div>
       <label className="field-label">Note<input value={note} onChange={(event) => setNote(event.target.value)} maxLength={80} required /></label>
       <label className="field-label">Amount<div className="edit-amount"><span>A$</span><input inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} required /></div></label>
       <div className="entry-context"><span>{transaction.type === "income" ? "Income" : "Expense"}</span><span>{transaction.account}</span><span>{transaction.occurredAt}</span></div>
       {error && <p className="form-error">{error}</p>}
-      <button className="save-button" disabled={saving}>{saving ? "Saving…" : "Save changes"}</button>
+      <button className="save-button" disabled={saving || deleting}>{saving ? "Saving…" : "Save changes"}</button>
+      <button type="button" className="delete-entry-button" onClick={remove} disabled={saving || deleting}>{deleting ? "Deleting…" : "Delete entry"}</button>
     </form>
   </div>;
 }
