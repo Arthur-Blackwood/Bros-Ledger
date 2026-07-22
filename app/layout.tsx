@@ -7,14 +7,14 @@ export async function generateMetadata(): Promise<Metadata> {
   const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host") ?? "localhost:3000";
   const protocol = requestHeaders.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
   const origin = `${protocol}://${host}`;
-  const title = "拾光账本 · 每日记账";
-  const description = "轻松记录每一笔，把账单截图变成清晰的每日账单。";
+  const title = "Daylight Ledger · Personal finance";
+  const description = "A calm, AI-friendly ledger for everyday life under southern skies.";
   const image = `${origin}/og.png`;
   return {
     title,
     description,
     icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },
-    openGraph: { title, description, type: "website", images: [{ url: image, width: 2184, height: 941, alt: "拾光账本" }] },
+    openGraph: { title, description, type: "website", images: [{ url: image, width: 2184, height: 941, alt: "Daylight Ledger" }] },
     twitter: { card: "summary_large_image", title, description, images: [image] },
   };
 }
@@ -23,7 +23,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="zh-CN">
+    <html lang="en-AU">
       <body>{children}</body>
     </html>
   );

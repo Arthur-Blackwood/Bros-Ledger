@@ -23,7 +23,7 @@ type RuntimeEnv = typeof env & { DB?: D1Database };
 
 async function getDatabase() {
   const db = (env as RuntimeEnv).DB;
-  if (!db) throw new Error("数据库尚未连接");
+  if (!db) throw new Error("The ledger database is not connected yet.");
 
   await db.batch([
     db.prepare(`CREATE TABLE IF NOT EXISTS transactions (
@@ -48,17 +48,17 @@ async function getDatabase() {
 
 function normalize(input: TransactionInput) {
   const date = input.occurredAt ?? input.date ?? new Date().toISOString().slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("日期需要使用 YYYY-MM-DD 格式");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("Dates must use the YYYY-MM-DD format.");
 
   const amountCents = Number.isInteger(input.amountCents)
     ? Math.abs(input.amountCents as number)
     : Math.round(Math.abs(Number(input.amount ?? 0)) * 100);
-  if (!Number.isFinite(amountCents) || amountCents <= 0) throw new Error("金额必须大于 0");
+  if (!Number.isFinite(amountCents) || amountCents <= 0) throw new Error("The amount must be greater than zero.");
 
   const type = input.type === "income" ? "income" : "expense";
-  const merchant = String(input.merchant ?? "未命名交易").trim().slice(0, 80) || "未命名交易";
-  const category = String(input.category ?? (type === "income" ? "收入" : "其他")).trim().slice(0, 30);
-  const account = String(input.account ?? "日常卡").trim().slice(0, 40);
+  const merchant = String(input.merchant ?? "Untitled transaction").trim().slice(0, 80) || "Untitled transaction";
+  const category = String(input.category ?? (type === "income" ? "Income" : "Other")).trim().slice(0, 30);
+  const account = String(input.account ?? "Everyday").trim().slice(0, 40);
   const note = String(input.note ?? "").trim().slice(0, 240);
   const currency = String(input.currency ?? "AUD").trim().toUpperCase().slice(0, 3) || "AUD";
   const tags = Array.isArray(input.tags)
@@ -108,7 +108,7 @@ export async function GET(request: NextRequest) {
     }));
     return NextResponse.json({ transactions });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "读取失败" }, { status: 500 });
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Could not load the ledger." }, { status: 500 });
   }
 }
 
@@ -121,7 +121,7 @@ export async function POST(request: NextRequest) {
       : Array.isArray(body.transactions)
         ? body.transactions
         : [body];
-    if (!inputs.length || inputs.length > 300) throw new Error("每次可导入 1–300 笔交易");
+    if (!inputs.length || inputs.length > 300) throw new Error("Import between 1 and 300 transactions at a time.");
     const transactions = inputs.map(normalize);
     await db.batch(transactions.map((item) => db.prepare(`INSERT OR REPLACE INTO transactions
       (id, occurred_at, type, amount_cents, currency, merchant, category, account, note, tags, source)
@@ -129,18 +129,18 @@ export async function POST(request: NextRequest) {
       .bind(item.id, item.occurredAt, item.type, item.amountCents, item.currency, item.merchant, item.category, item.account, item.note, JSON.stringify(item.tags), item.source)));
     return NextResponse.json({ transactions, count: transactions.length }, { status: 201 });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "保存失败" }, { status: 400 });
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Could not save the transaction." }, { status: 400 });
   }
 }
 
 export async function DELETE(request: NextRequest) {
   try {
     const id = request.nextUrl.searchParams.get("id");
-    if (!id) throw new Error("缺少交易 ID");
+    if (!id) throw new Error("A transaction ID is required.");
     const db = await getDatabase();
     await db.prepare("DELETE FROM transactions WHERE id = ?").bind(id).run();
     return NextResponse.json({ ok: true });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "删除失败" }, { status: 400 });
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Could not delete the transaction." }, { status: 400 });
   }
 }

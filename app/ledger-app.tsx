@@ -19,14 +19,14 @@ type Transaction = {
 type View = "overview" | "reports" | "ai";
 
 const categoryMeta: Record<string, { emoji: string; color: string }> = {
-  餐饮: { emoji: "🍜", color: "#ff9f7f" },
-  交通: { emoji: "🚆", color: "#83c6b0" },
-  购物: { emoji: "🛍️", color: "#f2cf6d" },
-  居家: { emoji: "🏠", color: "#97afd9" },
-  娱乐: { emoji: "🎬", color: "#c0a1d8" },
-  健康: { emoji: "🌿", color: "#86b98b" },
-  收入: { emoji: "💰", color: "#74b995" },
-  其他: { emoji: "✨", color: "#aeb5b1" },
+  Food: { emoji: "🍜", color: "#c96745" },
+  Transport: { emoji: "🚆", color: "#5f99aa" },
+  Shopping: { emoji: "🛍️", color: "#efc94c" },
+  Home: { emoji: "🏠", color: "#8ba9a0" },
+  Fun: { emoji: "🎬", color: "#b89082" },
+  Health: { emoji: "🌿", color: "#6f9b79" },
+  Income: { emoji: "💰", color: "#2f6f62" },
+  Other: { emoji: "✨", color: "#a8aea8" },
 };
 
 const categoryNames = Object.keys(categoryMeta);
@@ -43,22 +43,22 @@ const dateShift = (dateKey: string, amount: number) => {
 };
 
 const demoTransactions = (today: string): Transaction[] => [
-  { id: "demo-1", occurredAt: today, type: "expense", amountCents: 1850, currency: "AUD", merchant: "Edition Roasters", category: "餐饮", account: "日常卡", note: "早午餐", tags: ["朋友"], source: "demo" },
-  { id: "demo-2", occurredAt: today, type: "expense", amountCents: 480, currency: "AUD", merchant: "Metro", category: "交通", account: "日常卡", note: "", tags: [], source: "demo" },
-  { id: "demo-3", occurredAt: today, type: "expense", amountCents: 3290, currency: "AUD", merchant: "MUJI", category: "购物", account: "信用卡", note: "收纳用品", tags: ["家"], source: "demo" },
-  { id: "demo-4", occurredAt: dateShift(today, -1), type: "income", amountCents: 320000, currency: "AUD", merchant: "项目收入", category: "收入", account: "储蓄卡", note: "", tags: [], source: "demo" },
-  { id: "demo-5", occurredAt: dateShift(today, -1), type: "expense", amountCents: 2460, currency: "AUD", merchant: "Woolworths", category: "居家", account: "日常卡", note: "本周杂货", tags: [], source: "demo" },
-  { id: "demo-6", occurredAt: dateShift(today, -3), type: "expense", amountCents: 1550, currency: "AUD", merchant: "Palace Cinema", category: "娱乐", account: "信用卡", note: "", tags: [], source: "demo" },
+  { id: "demo-1", occurredAt: today, type: "expense", amountCents: 1850, currency: "AUD", merchant: "Edition Roasters", category: "Food", account: "Everyday", note: "Brunch", tags: ["Friends"], source: "demo" },
+  { id: "demo-2", occurredAt: today, type: "expense", amountCents: 480, currency: "AUD", merchant: "Sydney Metro", category: "Transport", account: "Everyday", note: "", tags: [], source: "demo" },
+  { id: "demo-3", occurredAt: today, type: "expense", amountCents: 3290, currency: "AUD", merchant: "MUJI", category: "Shopping", account: "Credit", note: "Home storage", tags: ["Home"], source: "demo" },
+  { id: "demo-4", occurredAt: dateShift(today, -1), type: "income", amountCents: 320000, currency: "AUD", merchant: "Project payment", category: "Income", account: "Savings", note: "", tags: [], source: "demo" },
+  { id: "demo-5", occurredAt: dateShift(today, -1), type: "expense", amountCents: 2460, currency: "AUD", merchant: "Woolworths", category: "Home", account: "Everyday", note: "Weekly groceries", tags: [], source: "demo" },
+  { id: "demo-6", occurredAt: dateShift(today, -3), type: "expense", amountCents: 1550, currency: "AUD", merchant: "Palace Cinemas", category: "Fun", account: "Credit", note: "", tags: [], source: "demo" },
 ];
 
 const money = (cents: number, currency = "AUD", signed = false) => {
   const value = cents / 100;
-  const text = new Intl.NumberFormat("zh-CN", { style: "currency", currency, minimumFractionDigits: 2 }).format(Math.abs(value));
+  const text = new Intl.NumberFormat("en-AU", { style: "currency", currency, minimumFractionDigits: 2 }).format(Math.abs(value));
   if (!signed || cents === 0) return text;
   return `${cents > 0 ? "+" : "−"}${text}`;
 };
 
-const longDate = (dateKey: string) => new Intl.DateTimeFormat("zh-CN", {
+const longDate = (dateKey: string) => new Intl.DateTimeFormat("en-AU", {
   month: "long", day: "numeric", weekday: "short",
 }).format(new Date(`${dateKey}T12:00:00`));
 
@@ -77,11 +77,11 @@ export function LedgerApp() {
       "type": "expense",
       "amount": 12.80,
       "currency": "AUD",
-      "merchant": "账单商户",
-      "category": "餐饮",
-      "account": "日常卡",
-      "note": "由账单截图识别",
-      "tags": ["截图导入"],
+      "merchant": "Sample merchant",
+      "category": "Food",
+      "account": "Everyday",
+      "note": "Read from a bill screenshot",
+      "tags": ["receipt"],
       "source": "screenshot"
     }
   ]
@@ -91,10 +91,10 @@ export function LedgerApp() {
     try {
       const response = await fetch("/api/transactions", { cache: "no-store" });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "读取失败");
+      if (!response.ok) throw new Error(data.error || "Could not load the ledger.");
       setTransactions(data.transactions ?? []);
     } catch {
-      setNotice("暂时无法连接账本数据，正在显示示例界面。");
+      setNotice("The ledger is temporarily offline, so preview data is being shown.");
     } finally {
       setLoading(false);
     }
@@ -127,7 +127,7 @@ export function LedgerApp() {
   }), [selectedDate, visibleTransactions]);
   const maxWeek = Math.max(...weekData.map((item) => item.value), 1);
 
-  const dailySummary = `${longDate(selectedDate)}：支出 ${money(selectedExpense, currency)}，收入 ${money(selectedIncome, currency)}，净额 ${money(selectedIncome - selectedExpense, currency, true)}。${selectedItems.length ? `共 ${selectedItems.length} 笔，${categoryTotals[0] ? `本月主要支出为${categoryTotals[0][0]}` : "已完成记录"}。` : "当天暂无记录。"}`;
+  const dailySummary = `${longDate(selectedDate)}: spent ${money(selectedExpense, currency)}, received ${money(selectedIncome, currency)}, net ${money(selectedIncome - selectedExpense, currency, true)}. ${selectedItems.length ? `${selectedItems.length} transaction${selectedItems.length === 1 ? "" : "s"}${categoryTotals[0] ? `, with ${categoryTotals[0][0]} leading this month` : " recorded"}.` : "No transactions recorded for this day."}`;
 
   const copyText = async (text: string, message: string) => {
     await navigator.clipboard.writeText(text);
@@ -141,10 +141,10 @@ export function LedgerApp() {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `拾光账本-${today}.json`;
+    anchor.download = `daylight-ledger-${today}.json`;
     anchor.click();
     URL.revokeObjectURL(url);
-    setNotice("账本 JSON 已导出");
+    setNotice("Ledger JSON exported.");
   };
 
   const importLedger = async () => {
@@ -153,12 +153,12 @@ export function LedgerApp() {
       const body = Array.isArray(parsed) ? { transactions: parsed } : parsed;
       const response = await fetch("/api/transactions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "导入失败");
+      if (!response.ok) throw new Error(data.error || "Import failed.");
       await loadTransactions();
-      setNotice(`已导入 ${data.count} 笔账单`);
+      setNotice(`${data.count} transaction${data.count === 1 ? "" : "s"} imported.`);
       setView("overview");
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "JSON 格式不正确");
+      setNotice(error instanceof Error ? error.message : "The JSON format is not valid.");
     }
   };
 
@@ -167,82 +167,82 @@ export function LedgerApp() {
     const response = await fetch(`/api/transactions?id=${encodeURIComponent(id)}`, { method: "DELETE" });
     if (response.ok) {
       setTransactions((items) => items.filter((item) => item.id !== id));
-      setNotice("已删除这笔记录");
+      setNotice("Transaction deleted.");
     }
   };
 
   return (
     <main className="app-shell">
       <aside className="sidebar">
-        <button className="brand" onClick={() => setView("overview")} aria-label="回到首页">
-          <span className="brand-mark">拾</span><span>拾光账本</span>
+        <button className="brand" onClick={() => setView("overview")} aria-label="Go to overview">
+          <span className="brand-mark">D</span><span>Daylight Ledger</span>
         </button>
-        <nav className="main-nav" aria-label="主要导航">
-          <NavItem active={view === "overview"} icon="⌂" label="今日" onClick={() => setView("overview")} />
-          <NavItem active={view === "reports"} icon="↗" label="报表" onClick={() => setView("reports")} />
-          <NavItem active={view === "ai"} icon="✦" label="AI 工作台" onClick={() => setView("ai")} />
+        <nav className="main-nav" aria-label="Main navigation">
+          <NavItem active={view === "overview"} icon="⌂" label="Today" onClick={() => setView("overview")} />
+          <NavItem active={view === "reports"} icon="↗" label="Reports" onClick={() => setView("reports")} />
+          <NavItem active={view === "ai"} icon="✦" label="AI Desk" onClick={() => setView("ai")} />
         </nav>
         <div className="sidebar-foot">
-          <div className="sync-dot"><span /> 数据已保存</div>
-          <p>默认币种 · AUD</p>
+          <div className="sync-dot"><span /> Data saved</div>
+          <p>Home currency · AUD</p>
         </div>
       </aside>
 
       <section className="workspace">
         <header className="topbar">
           <div>
-            <p className="eyebrow">{view === "overview" ? "今日账本" : view === "reports" ? "收支洞察" : "给 ChatGPT 的入口"}</p>
-            <h1>{view === "overview" ? "把生活，记得刚刚好" : view === "reports" ? "钱都花去哪了？" : "截图变账单，一次搞定"}</h1>
+            <p className="eyebrow">{view === "overview" ? "Today under southern skies" : view === "reports" ? "Spending insights" : "Built for ChatGPT"}</p>
+            <h1>{view === "overview" ? "Money, in a clearer light." : view === "reports" ? "Where did the money go?" : "From screenshot to ledger."}</h1>
           </div>
-          <button className="add-button" onClick={() => setDrawerOpen(true)}><span>＋</span> 记一笔</button>
+          <button className="add-button" onClick={() => setDrawerOpen(true)}><span>＋</span> Add transaction</button>
         </header>
 
         {notice && <div className="notice" role="status">{notice}<button onClick={() => setNotice("")}>×</button></div>}
-        {isDemo && <div className="demo-banner"><span>正在预览示例数据</span><p>添加第一笔后，这些示例会自动消失。</p><button onClick={() => setDrawerOpen(true)}>开始记账</button></div>}
+        {isDemo && <div className="demo-banner"><span>Preview data</span><p>These examples disappear after your first entry.</p><button onClick={() => setDrawerOpen(true)}>Start tracking</button></div>}
 
         {view === "overview" && (
           <div className="dashboard-grid">
             <section className="balance-card">
-              <div className="balance-head"><span>可见结余</span><button aria-label="切换金额显示">•••</button></div>
+              <div className="balance-head"><span>Current balance</span><button aria-label="Balance options">•••</button></div>
               <strong>{money(totalBalance, currency)}</strong>
               <div className="balance-meta">
-                <div><span className="legend-dot income" />本月收入 <b>{money(monthIncome, currency)}</b></div>
-                <div><span className="legend-dot expense" />本月支出 <b>{money(monthExpense, currency)}</b></div>
+                <div><span className="legend-dot income" />Income this month <b>{money(monthIncome, currency)}</b></div>
+                <div><span className="legend-dot expense" />Spent this month <b>{money(monthExpense, currency)}</b></div>
               </div>
               <div className="balance-art" aria-hidden="true"><i /><i /><i /></div>
             </section>
 
             <section className="week-card">
-              <div className="section-heading"><div><p>近 7 天</p><h2>{money(weekData.reduce((sum, item) => sum + item.value, 0), currency)}</h2></div><span>日均 {money(Math.round(weekData.reduce((sum, item) => sum + item.value, 0) / 7), currency)}</span></div>
-              <div className="mini-bars" aria-label="最近七天支出柱状图">
-                {weekData.map((item) => <div className="mini-bar" key={item.date}><i style={{ height: `${Math.max(12, item.value / maxWeek * 100)}%` }} className={item.date === selectedDate ? "current" : ""} /><span>{new Intl.DateTimeFormat("zh-CN", { weekday: "narrow" }).format(new Date(`${item.date}T12:00:00`))}</span></div>)}
+              <div className="section-heading"><div><p>Last 7 days</p><h2>{money(weekData.reduce((sum, item) => sum + item.value, 0), currency)}</h2></div><span>Daily avg. {money(Math.round(weekData.reduce((sum, item) => sum + item.value, 0) / 7), currency)}</span></div>
+              <div className="mini-bars" aria-label="Spending over the last seven days">
+                {weekData.map((item) => <div className="mini-bar" key={item.date}><i style={{ height: `${Math.max(12, item.value / maxWeek * 100)}%` }} className={item.date === selectedDate ? "current" : ""} /><span>{new Intl.DateTimeFormat("en-AU", { weekday: "narrow" }).format(new Date(`${item.date}T12:00:00`))}</span></div>)}
               </div>
             </section>
 
             <section className="transactions-card">
               <div className="date-switcher">
-                <button onClick={() => setSelectedDate(dateShift(selectedDate, -1))} aria-label="前一天">‹</button>
-                <div><h2>{selectedDate === today ? "今天" : longDate(selectedDate)}</h2><p>{selectedDate} · {selectedItems.length} 笔</p></div>
-                <button onClick={() => setSelectedDate(dateShift(selectedDate, 1))} aria-label="后一天" disabled={selectedDate >= today}>›</button>
+                <button onClick={() => setSelectedDate(dateShift(selectedDate, -1))} aria-label="Previous day">‹</button>
+                <div><h2>{selectedDate === today ? "Today" : longDate(selectedDate)}</h2><p>{selectedDate} · {selectedItems.length} {selectedItems.length === 1 ? "entry" : "entries"}</p></div>
+                <button onClick={() => setSelectedDate(dateShift(selectedDate, 1))} aria-label="Next day" disabled={selectedDate >= today}>›</button>
               </div>
-              <div className="day-total"><span>当日净额</span><strong>{money(selectedIncome - selectedExpense, currency, true)}</strong></div>
+              <div className="day-total"><span>Net for the day</span><strong>{money(selectedIncome - selectedExpense, currency, true)}</strong></div>
               <div className="transaction-list">
-                {loading ? <div className="empty-state">正在打开账本…</div> : selectedItems.length ? selectedItems.map((item) => (
+                {loading ? <div className="empty-state">Opening your ledger…</div> : selectedItems.length ? selectedItems.map((item) => (
                   <article className="transaction" key={item.id}>
-                    <div className="category-icon" style={{ background: `${categoryMeta[item.category]?.color ?? categoryMeta.其他.color}30` }}>{categoryMeta[item.category]?.emoji ?? "✨"}</div>
+                    <div className="category-icon" style={{ background: `${categoryMeta[item.category]?.color ?? categoryMeta.Other.color}30` }}>{categoryMeta[item.category]?.emoji ?? "✨"}</div>
                     <div className="transaction-copy"><h3>{item.merchant}</h3><p>{item.category} · {item.account}{item.note ? ` · ${item.note}` : ""}</p></div>
-                    <div className={`transaction-amount ${item.type}`}><strong>{item.type === "income" ? "+" : "−"}{money(item.amountCents, item.currency)}</strong>{item.source === "screenshot" && <span>截图导入</span>}</div>
-                    {!item.id.startsWith("demo-") && <button className="delete-button" onClick={() => removeTransaction(item.id)} aria-label={`删除 ${item.merchant}`}>×</button>}
+                    <div className={`transaction-amount ${item.type}`}><strong>{item.type === "income" ? "+" : "−"}{money(item.amountCents, item.currency)}</strong>{item.source === "screenshot" && <span>Screenshot import</span>}</div>
+                    {!item.id.startsWith("demo-") && <button className="delete-button" onClick={() => removeTransaction(item.id)} aria-label={`Delete ${item.merchant}`}>×</button>}
                   </article>
-                )) : <div className="empty-state"><span>🪴</span><h3>这一天还很安静</h3><p>记下第一笔，让今天有迹可循。</p><button onClick={() => setDrawerOpen(true)}>记一笔</button></div>}
+                )) : <div className="empty-state"><span>🌿</span><h3>A quiet day so far</h3><p>Add the first entry when you are ready.</p><button onClick={() => setDrawerOpen(true)}>Add transaction</button></div>}
               </div>
             </section>
 
             <section className="daily-note-card">
-              <div className="note-top"><span className="spark">✦</span><p>每日小结</p><button onClick={() => copyText(dailySummary, "每日小结已复制")}>复制</button></div>
-              <h2>{selectedExpense ? `今天花了 ${money(selectedExpense, currency)}` : "今天还没有支出"}</h2>
+              <div className="note-top"><span className="spark">✦</span><p>Daily note</p><button onClick={() => copyText(dailySummary, "Daily note copied.")}>Copy</button></div>
+              <h2>{selectedExpense ? `You spent ${money(selectedExpense, currency)}` : "No spending yet"}</h2>
               <p>{dailySummary}</p>
-              <div className="note-tags"><span>自动生成</span><span>{selectedItems.length} 笔交易</span></div>
+              <div className="note-tags"><span>Auto-generated</span><span>{selectedItems.length} transaction{selectedItems.length === 1 ? "" : "s"}</span></div>
             </section>
           </div>
         )}
@@ -250,22 +250,22 @@ export function LedgerApp() {
         {view === "reports" && (
           <div className="reports-grid">
             <section className="report-summary">
-              <p className="eyebrow">{monthKey.replace("-", " 年 ")} 月</p>
-              <h2>本月共支出<br /><strong>{money(monthExpense, currency)}</strong></h2>
-              <div className="report-badges"><span>收入 {money(monthIncome, currency)}</span><span>结余 {money(monthIncome - monthExpense, currency, true)}</span></div>
+              <p className="eyebrow">{new Intl.DateTimeFormat("en-AU", { month: "long", year: "numeric" }).format(new Date(`${selectedDate}T12:00:00`))}</p>
+              <h2>Spent this month<br /><strong>{money(monthExpense, currency)}</strong></h2>
+              <div className="report-badges"><span>Income {money(monthIncome, currency)}</span><span>Net {money(monthIncome - monthExpense, currency, true)}</span></div>
             </section>
             <section className="category-card">
-              <div className="section-heading"><div><p>生活配方</p><h2>分类支出</h2></div><span>{categoryTotals.length} 个分类</span></div>
+              <div className="section-heading"><div><p>Life in numbers</p><h2>Spending by category</h2></div><span>{categoryTotals.length} categories</span></div>
               <div className="category-visual">
-                <div className="donut" style={{ background: buildDonut(categoryTotals) }}><div><strong>{categoryTotals[0]?.[0] ?? "暂无"}</strong><span>最大支出</span></div></div>
-                <div className="category-list">{categoryTotals.length ? categoryTotals.slice(0, 5).map(([name, value]) => <div key={name}><span className="category-swatch" style={{ background: categoryMeta[name]?.color ?? categoryMeta.其他.color }} /> <b>{categoryMeta[name]?.emoji ?? "✨"} {name}</b><span>{money(value, currency)} · {monthExpense ? Math.round(value / monthExpense * 100) : 0}%</span></div>) : <p>记几笔之后，这里会出现你的生活配方。</p>}</div>
+                <div className="donut" style={{ background: buildDonut(categoryTotals) }}><div><strong>{categoryTotals[0]?.[0] ?? "None yet"}</strong><span>Top spend</span></div></div>
+                <div className="category-list">{categoryTotals.length ? categoryTotals.slice(0, 5).map(([name, value]) => <div key={name}><span className="category-swatch" style={{ background: categoryMeta[name]?.color ?? categoryMeta.Other.color }} /> <b>{categoryMeta[name]?.emoji ?? "✨"} {name}</b><span>{money(value, currency)} · {monthExpense ? Math.round(value / monthExpense * 100) : 0}%</span></div>) : <p>Your spending mix will appear after a few entries.</p>}</div>
               </div>
             </section>
             <section className="report-table-card">
-              <div className="section-heading"><div><p>每日账单</p><h2>最近 7 天</h2></div><button onClick={() => copyText(dailySummary, "今日账单已复制")}>复制今日</button></div>
+              <div className="section-heading"><div><p>Daily ledger</p><h2>Last 7 days</h2></div><button onClick={() => copyText(dailySummary, "Today's ledger copied.")}>Copy today</button></div>
               <div className="daily-table">{weekData.slice().reverse().map((day) => {
                 const count = visibleTransactions.filter((item) => item.occurredAt === day.date).length;
-                return <button key={day.date} onClick={() => { setSelectedDate(day.date); setView("overview"); }}><span>{longDate(day.date)}</span><span>{count} 笔</span><strong>{money(day.value, currency)}</strong><i>›</i></button>;
+                return <button key={day.date} onClick={() => { setSelectedDate(day.date); setView("overview"); }}><span>{longDate(day.date)}</span><span>{count} {count === 1 ? "entry" : "entries"}</span><strong>{money(day.value, currency)}</strong><i>›</i></button>;
               })}</div>
             </section>
           </div>
@@ -275,38 +275,38 @@ export function LedgerApp() {
           <div className="ai-grid">
             <section className="ai-intro-card">
               <span className="ai-orb">✦</span>
-              <p className="eyebrow">为截图记账而生</p>
-              <h2>把账单截图发给我，<br />剩下的交给 AI。</h2>
-              <p>我会识别日期、金额、商户和分类，整理成下方的标准格式。你只需粘贴并导入。</p>
-              <ol><li><span>1</span>把账单截图发到我们的对话</li><li><span>2</span>让我输出“拾光账本 JSON”</li><li><span>3</span>粘贴、检查、导入</li></ol>
-              <button onClick={() => copyText("请把这张账单截图整理成拾光账本 JSON。字段包含：date, type, amount, currency, merchant, category, account, note, tags, source。source 固定为 screenshot。只输出合法 JSON。", "给 ChatGPT 的提示词已复制")}>复制给 ChatGPT 的提示词</button>
+              <p className="eyebrow">Made for screenshot bookkeeping</p>
+              <h2>Send the bill to ChatGPT.<br />Let AI do the sorting.</h2>
+              <p>ChatGPT can read the date, amount, merchant and category, then return the clean format below. Paste it here and import.</p>
+              <ol><li><span>1</span>Send a bill screenshot in our chat</li><li><span>2</span>Ask for Daylight Ledger JSON</li><li><span>3</span>Paste, review and import</li></ol>
+              <button onClick={() => copyText("Please turn this bill screenshot into valid Daylight Ledger JSON. Include these fields: date, type, amount, currency, merchant, category, account, note, tags and source. Set source to screenshot. Use English only and output valid JSON only.", "Prompt for ChatGPT copied.")}>Copy prompt for ChatGPT</button>
             </section>
             <section className="import-card">
-              <div className="section-heading"><div><p>结构化入口</p><h2>导入账单 JSON</h2></div><span>1–300 笔</span></div>
-              <textarea value={importText} onChange={(event) => setImportText(event.target.value)} spellCheck={false} aria-label="账单 JSON" />
-              <div className="import-actions"><button className="secondary-button" onClick={() => setImportText("")}>清空</button><button className="primary-button" onClick={importLedger}>检查并导入</button></div>
+              <div className="section-heading"><div><p>Structured entry point</p><h2>Import ledger JSON</h2></div><span>1–300 entries</span></div>
+              <textarea value={importText} onChange={(event) => setImportText(event.target.value)} spellCheck={false} aria-label="Ledger JSON" />
+              <div className="import-actions"><button className="secondary-button" onClick={() => setImportText("")}>Clear</button><button className="primary-button" onClick={importLedger}>Review and import</button></div>
             </section>
             <section className="data-card">
-              <div><span>⇩</span><div><h3>完整账本备份</h3><p>标准 JSON，方便我读取、分析或迁移。</p></div></div>
-              <button onClick={exportLedger}>导出 JSON</button>
+              <div><span>⇩</span><div><h3>Full ledger backup</h3><p>Standard JSON for AI analysis or migration.</p></div></div>
+              <button onClick={exportLedger}>Export JSON</button>
             </section>
             <section className="data-card">
-              <div><span>☰</span><div><h3>今日小结</h3><p>一段可以直接发给自己的清晰摘要。</p></div></div>
-              <button onClick={() => copyText(dailySummary, "今日小结已复制")}>复制小结</button>
+              <div><span>☰</span><div><h3>Today's summary</h3><p>A clear note ready to save or share.</p></div></div>
+              <button onClick={() => copyText(dailySummary, "Today's summary copied.")}>Copy summary</button>
             </section>
           </div>
         )}
       </section>
 
-      <nav className="mobile-nav" aria-label="移动端导航">
-        <NavItem active={view === "overview"} icon="⌂" label="今日" onClick={() => setView("overview")} />
-        <NavItem active={view === "reports"} icon="↗" label="报表" onClick={() => setView("reports")} />
-        <button className="mobile-add" onClick={() => setDrawerOpen(true)} aria-label="记一笔">＋</button>
+      <nav className="mobile-nav" aria-label="Mobile navigation">
+        <NavItem active={view === "overview"} icon="⌂" label="Today" onClick={() => setView("overview")} />
+        <NavItem active={view === "reports"} icon="↗" label="Reports" onClick={() => setView("reports")} />
+        <button className="mobile-add" onClick={() => setDrawerOpen(true)} aria-label="Add transaction">＋</button>
         <NavItem active={view === "ai"} icon="✦" label="AI" onClick={() => setView("ai")} />
-        <button><span>⚙</span><em>设置</em></button>
+        <button><span>⚙</span><em>Settings</em></button>
       </nav>
 
-      {drawerOpen && <TransactionDrawer today={today} onClose={() => setDrawerOpen(false)} onSaved={async () => { setDrawerOpen(false); await loadTransactions(); setNotice("这一笔，记好了"); }} />}
+      {drawerOpen && <TransactionDrawer today={today} onClose={() => setDrawerOpen(false)} onSaved={async () => { setDrawerOpen(false); await loadTransactions(); setNotice("Transaction saved."); }} />}
     </main>
   );
 }
@@ -319,8 +319,8 @@ function TransactionDrawer({ today, onClose, onSaved }: { today: string; onClose
   const [type, setType] = useState<"expense" | "income">("expense");
   const [amount, setAmount] = useState("");
   const [merchant, setMerchant] = useState("");
-  const [category, setCategory] = useState("餐饮");
-  const [account, setAccount] = useState("日常卡");
+  const [category, setCategory] = useState("Food");
+  const [account, setAccount] = useState("Everyday");
   const [date, setDate] = useState(today);
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
@@ -329,26 +329,26 @@ function TransactionDrawer({ today, onClose, onSaved }: { today: string; onClose
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setSaving(true); setError("");
     try {
-      const response = await fetch("/api/transactions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date, type, amount: Number(amount), currency: "AUD", merchant, category: type === "income" ? "收入" : category, account, note, source: "manual" }) });
+      const response = await fetch("/api/transactions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date, type, amount: Number(amount), currency: "AUD", merchant, category: type === "income" ? "Income" : category, account, note, source: "manual" }) });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "保存失败");
+      if (!response.ok) throw new Error(data.error || "Could not save the transaction.");
       await onSaved();
-    } catch (saveError) { setError(saveError instanceof Error ? saveError.message : "保存失败"); }
+    } catch (saveError) { setError(saveError instanceof Error ? saveError.message : "Could not save the transaction."); }
     finally { setSaving(false); }
   };
 
-  return <div className="drawer-layer" role="dialog" aria-modal="true" aria-label="记一笔">
-    <button className="drawer-backdrop" onClick={onClose} aria-label="关闭" />
+  return <div className="drawer-layer" role="dialog" aria-modal="true" aria-label="Add transaction">
+    <button className="drawer-backdrop" onClick={onClose} aria-label="Close" />
     <form className="transaction-drawer" onSubmit={submit}>
-      <div className="drawer-header"><div><p>快速记账</p><h2>这一笔是什么？</h2></div><button type="button" onClick={onClose}>×</button></div>
-      <div className="type-toggle"><button type="button" className={type === "expense" ? "active" : ""} onClick={() => setType("expense")}>支出</button><button type="button" className={type === "income" ? "active" : ""} onClick={() => { setType("income"); setCategory("收入"); }}>收入</button></div>
-      <label className="amount-field"><span>A$</span><input autoFocus inputMode="decimal" placeholder="0.00" value={amount} onChange={(event) => setAmount(event.target.value)} aria-label="金额" required /></label>
-      <label className="field-label">商户 / 来源<input placeholder={type === "expense" ? "例如：超市、咖啡店" : "例如：工资、退款"} value={merchant} onChange={(event) => setMerchant(event.target.value)} required /></label>
-      {type === "expense" && <fieldset className="category-picker"><legend>选择分类</legend><div>{categoryNames.filter((name) => name !== "收入").map((name) => <button type="button" key={name} className={category === name ? "active" : ""} onClick={() => setCategory(name)}><span>{categoryMeta[name].emoji}</span>{name}</button>)}</div></fieldset>}
-      <div className="field-row"><label className="field-label">账户<select value={account} onChange={(event) => setAccount(event.target.value)}><option>日常卡</option><option>信用卡</option><option>储蓄卡</option><option>现金</option></select></label><label className="field-label">日期<input type="date" value={date} max={today} onChange={(event) => setDate(event.target.value)} /></label></div>
-      <label className="field-label">备注（可选）<input placeholder="给未来的自己一点线索" value={note} onChange={(event) => setNote(event.target.value)} /></label>
+      <div className="drawer-header"><div><p>Quick entry</p><h2>What was this one?</h2></div><button type="button" onClick={onClose}>×</button></div>
+      <div className="type-toggle"><button type="button" className={type === "expense" ? "active" : ""} onClick={() => setType("expense")}>Expense</button><button type="button" className={type === "income" ? "active" : ""} onClick={() => { setType("income"); setCategory("Income"); }}>Income</button></div>
+      <label className="amount-field"><span>A$</span><input autoFocus inputMode="decimal" placeholder="0.00" value={amount} onChange={(event) => setAmount(event.target.value)} aria-label="Amount" required /></label>
+      <label className="field-label">Merchant / source<input placeholder={type === "expense" ? "e.g. supermarket or cafe" : "e.g. salary or refund"} value={merchant} onChange={(event) => setMerchant(event.target.value)} required /></label>
+      {type === "expense" && <fieldset className="category-picker"><legend>Choose a category</legend><div>{categoryNames.filter((name) => name !== "Income").map((name) => <button type="button" key={name} className={category === name ? "active" : ""} onClick={() => setCategory(name)}><span>{categoryMeta[name].emoji}</span>{name}</button>)}</div></fieldset>}
+      <div className="field-row"><label className="field-label">Account<select value={account} onChange={(event) => setAccount(event.target.value)}><option>Everyday</option><option>Credit</option><option>Savings</option><option>Cash</option></select></label><label className="field-label">Date<input type="date" value={date} max={today} onChange={(event) => setDate(event.target.value)} /></label></div>
+      <label className="field-label">Note (optional)<input placeholder="A small clue for your future self" value={note} onChange={(event) => setNote(event.target.value)} /></label>
       {error && <p className="form-error">{error}</p>}
-      <button className="save-button" disabled={saving}>{saving ? "正在保存…" : "记下这一笔"}</button>
+      <button className="save-button" disabled={saving}>{saving ? "Saving…" : "Save transaction"}</button>
     </form>
   </div>;
 }
@@ -360,7 +360,7 @@ function buildDonut(entries: [string, number][]) {
   const segments = entries.slice(0, 6).map(([name, value]) => {
     const start = cursor;
     cursor += value / total * 100;
-    return `${categoryMeta[name]?.color ?? categoryMeta.其他.color} ${start}% ${cursor}%`;
+    return `${categoryMeta[name]?.color ?? categoryMeta.Other.color} ${start}% ${cursor}%`;
   });
   return `conic-gradient(${segments.join(", ")})`;
 }

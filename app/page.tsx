@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import { LedgerApp } from "./ledger-app";
 
 export const metadata: Metadata = {
-  title: "拾光账本 · 每日记账",
-  description: "轻松记录每一笔，把账单截图变成清晰的每日账单。",
+  title: "Daylight Ledger · Personal finance",
+  description: "A calm, AI-friendly ledger for everyday life under southern skies.",
 };
 
 export default function Home() {
