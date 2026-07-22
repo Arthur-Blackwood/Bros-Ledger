@@ -57,10 +57,11 @@ function normalize(input: TransactionInput) {
   if (!Number.isFinite(amountCents) || amountCents <= 0) throw new Error("The amount must be greater than zero.");
 
   const type = input.type === "income" ? "income" : "expense";
-  const merchant = String(input.merchant ?? "Untitled transaction").trim().slice(0, 80) || "Untitled transaction";
+  const legacyMerchant = String(input.merchant ?? "").trim();
+  const note = (String(input.note ?? "").trim() || legacyMerchant || "Untitled entry").slice(0, 240);
+  const merchant = note.slice(0, 80);
   const category = String(input.category ?? (type === "income" ? "Income" : "Other")).trim().slice(0, 30);
   const account = String(input.account ?? "Everyday").trim().slice(0, 40);
-  const note = String(input.note ?? "").trim().slice(0, 240);
   const currency = String(input.currency ?? "AUD").trim().toUpperCase().slice(0, 3) || "AUD";
   const tags = Array.isArray(input.tags)
     ? input.tags.map((tag) => String(tag).trim()).filter(Boolean).slice(0, 12)
@@ -101,7 +102,6 @@ export async function GET(request: NextRequest) {
       type: row.type,
       amountCents: row.amount_cents,
       currency: row.currency,
-      merchant: row.merchant,
       category: row.category,
       account: row.account,
       note: row.note,
@@ -133,7 +133,10 @@ export async function POST(request: NextRequest) {
       (id, occurred_at, type, amount_cents, currency, merchant, category, account, note, tags, source)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .bind(item.id, item.occurredAt, item.type, item.amountCents, item.currency, item.merchant, item.category, item.account, item.note, JSON.stringify(item.tags), item.source)));
-    return NextResponse.json({ transactions, count: transactions.length }, { status: 201 });
+    return NextResponse.json({
+      transactions: transactions.map(({ merchant: _merchant, ...item }) => item),
+      count: transactions.length,
+    }, { status: 201 });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Could not save the transaction." }, { status: 400 });
   }
@@ -148,18 +151,18 @@ export async function PATCH(request: NextRequest) {
     if (!id) throw new Error("A transaction ID is required.");
     const body = await request.json();
     const category = String(body.category ?? "").trim().slice(0, 30);
-    const merchant = String(body.note ?? "").trim().slice(0, 80);
+    const note = String(body.note ?? "").trim().slice(0, 240);
     const amountCents = Math.round(Math.abs(Number(body.amount ?? 0)) * 100);
     if (!category) throw new Error("Category is required.");
-    if (!merchant) throw new Error("Note is required.");
+    if (!note) throw new Error("Note is required.");
     if (!Number.isFinite(amountCents) || amountCents <= 0) throw new Error("The amount must be greater than zero.");
 
     const db = await getDatabase();
     const existing = await db.prepare("SELECT id FROM transactions WHERE id = ?").bind(id).first();
     if (!existing) return NextResponse.json({ error: "Transaction not found." }, { status: 404 });
-    await db.prepare("UPDATE transactions SET category = ?, merchant = ?, amount_cents = ? WHERE id = ?")
-      .bind(category, merchant, amountCents, id).run();
-    return NextResponse.json({ ok: true, transaction: { id, category, merchant, amountCents } });
+    await db.prepare("UPDATE transactions SET category = ?, note = ?, merchant = ?, amount_cents = ? WHERE id = ?")
+      .bind(category, note, note.slice(0, 80), amountCents, id).run();
+    return NextResponse.json({ ok: true, transaction: { id, category, note, amountCents } });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Could not update the transaction." }, { status: 400 });
   }

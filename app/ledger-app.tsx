@@ -8,7 +8,6 @@ type Transaction = {
   type: "expense" | "income";
   amountCents: number;
   currency: string;
-  merchant: string;
   category: string;
   account: string;
   note: string;
@@ -30,8 +29,6 @@ const categoryMeta: Record<string, { emoji: string; color: string }> = {
   Income: { emoji: "💰", color: "#2f6f62" },
   Other: { emoji: "✨", color: "#a8aea8" },
 };
-
-const categoryNames = Object.keys(categoryMeta);
 
 const toDateKey = (date = new Date()) => {
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
@@ -74,10 +71,9 @@ export function LedgerApp() {
       "type": "expense",
       "amount": 12.80,
       "currency": "AUD",
-      "merchant": "Sample merchant",
       "category": "Food",
       "account": "Everyday",
-      "note": "Read from a bill screenshot",
+      "note": "Lunch at a neighbourhood cafe",
       "tags": ["receipt"],
       "source": "screenshot"
     }
@@ -198,7 +194,7 @@ export function LedgerApp() {
     const rows = transactions.map((item) => [
       item.occurredAt,
       item.category,
-      item.merchant,
+      item.note,
       ((item.type === "income" ? 1 : -1) * item.amountCents / 100).toFixed(2),
     ]);
     const csv = [["Date", "Category", "Note", "Amount"], ...rows]
@@ -310,9 +306,9 @@ export function LedgerApp() {
                 {loading ? <div className="empty-state">Opening your ledger…</div> : selectedItems.length ? selectedItems.map((item) => (
                   <article className="transaction" key={item.id}>
                     <div className="category-icon" style={{ background: `${categoryMeta[item.category]?.color ?? categoryMeta.Other.color}30` }}>{categoryEmoji(item.category)}</div>
-                    <div className="transaction-copy"><h3>{item.merchant}</h3><p>{item.category} · {item.account}{item.note ? ` · ${item.note}` : ""}</p></div>
+                    <div className="transaction-copy"><h3>{item.note || "Untitled entry"}</h3><p>{item.category} · {item.account}</p></div>
                     <div className={`transaction-amount ${item.type}`}><strong>{item.type === "income" ? "+" : "−"}{money(item.amountCents, item.currency)}</strong>{item.source === "screenshot" && <span>Screenshot import</span>}</div>
-                    {canEdit && <button className="delete-button" onClick={() => removeTransaction(item.id)} aria-label={`Delete ${item.merchant}`}>×</button>}
+                    {canEdit && <button className="delete-button" onClick={() => removeTransaction(item.id)} aria-label={`Delete ${item.note || "entry"}`}>×</button>}
                   </article>
                 )) : <div className="empty-state"><span>🌿</span><h3>A quiet day so far</h3><p>{canEdit ? "Add the first entry when you are ready." : "No transactions are recorded for this day."}</p>{canEdit && <button onClick={() => setDrawerOpen(true)}>Add transaction</button>}</div>}
               </div>
@@ -352,9 +348,9 @@ export function LedgerApp() {
                   const dayNet = items.reduce((sum, item) => sum + (item.type === "income" ? item.amountCents : -item.amountCents), 0);
                   return <section className="ledger-day" key={date}>
                     <div className="ledger-day-head"><strong>{longDate(date)}</strong><span>{items.length} {items.length === 1 ? "entry" : "entries"}</span><b>{money(dayNet, items[0]?.currency ?? currency, true)}</b></div>
-                    {items.map((item) => <button className="ledger-entry-row" key={item.id} onClick={() => canEdit && setEditingTransaction(item)} disabled={!canEdit} aria-label={canEdit ? `Edit ${item.merchant}` : `${item.category}, ${item.merchant}, view only`}>
+                    {items.map((item) => <button className="ledger-entry-row" key={item.id} onClick={() => canEdit && setEditingTransaction(item)} disabled={!canEdit} aria-label={canEdit ? `Edit ${item.note || "entry"}` : `${item.category}, ${item.note || "No note"}, view only`}>
                       <span className="ledger-category"><i style={{ background: `${categoryMeta[item.category]?.color ?? categoryMeta.Other.color}30` }}>{categoryEmoji(item.category)}</i><b>{item.category}</b></span>
-                      <span className="ledger-note">{item.merchant || "No note"}</span>
+                      <span className="ledger-note">{item.note || "No note"}</span>
                       <strong className={item.type}>{item.type === "income" ? "+" : "−"}{money(item.amountCents, item.currency)}</strong>
                       <span className="ledger-edit">{canEdit ? "Edit" : "View"}</span>
                     </button>)}
@@ -373,9 +369,9 @@ export function LedgerApp() {
               <span className="ai-orb">✦</span>
               <p className="eyebrow">Made for screenshot bookkeeping</p>
               <h2>Send the bill to ChatGPT.<br />Let AI do the sorting.</h2>
-              <p>ChatGPT can read the date, amount, merchant and category, then return the clean format below. Paste it here and import.</p>
+              <p>ChatGPT can read the date, amount, note and category, then return the clean format below. Paste it here and import.</p>
               <ol><li><span>1</span>Send a bill screenshot in our chat</li><li><span>2</span>Ask for Daylight Ledger JSON</li><li><span>3</span>Paste, review and import</li></ol>
-              <button onClick={() => copyText("Please turn this bill screenshot into valid Daylight Ledger JSON. Include these fields: date, type, amount, currency, merchant, category, account, note, tags and source. Set source to screenshot. Use English only and output valid JSON only.", "Prompt for ChatGPT copied.")}>Copy prompt for ChatGPT</button>
+              <button onClick={() => copyText("Please turn this bill screenshot into valid Daylight Ledger JSON. Include these fields: date, type, amount, currency, category, account, note, tags and source. Put the payment description in note, set source to screenshot, use English only, and output valid JSON only.", "Prompt for ChatGPT copied.")}>Copy prompt for ChatGPT</button>
             </section>
             {canEdit && <section className="import-card">
               <div className="section-heading"><div><p>Structured entry point</p><h2>Import ledger JSON</h2></div><span>1–300 entries</span></div>
@@ -402,7 +398,7 @@ export function LedgerApp() {
         <button onClick={logout}><span>↪</span><em>Log out</em></button>
       </nav>
 
-      {canEdit && drawerOpen && <TransactionDrawer today={today} onClose={() => setDrawerOpen(false)} onSaved={async () => { setDrawerOpen(false); await loadTransactions(); setNotice("Transaction saved."); }} />}
+      {canEdit && drawerOpen && <TransactionDrawer today={today} categories={categories} onClose={() => setDrawerOpen(false)} onSaved={async () => { setDrawerOpen(false); await loadTransactions(); setNotice("Transaction saved."); }} />}
       {canEdit && editingTransaction && <EditTransactionDrawer transaction={editingTransaction} categories={categories} onClose={() => setEditingTransaction(null)} onSaved={async () => { setEditingTransaction(null); await loadTransactions(); setNotice("Entry updated."); }} onDeleted={async () => { setEditingTransaction(null); await loadTransactions(); setNotice("Entry deleted."); }} />}
     </main>
   );
@@ -517,21 +513,27 @@ function NavItem({ active, icon, label, onClick }: { active: boolean; icon: stri
   return <button className={active ? "active" : ""} onClick={onClick}><span>{icon}</span><em>{label}</em></button>;
 }
 
-function TransactionDrawer({ today, onClose, onSaved }: { today: string; onClose: () => void; onSaved: () => void }) {
+function TransactionDrawer({ today, categories, onClose, onSaved }: { today: string; categories: LedgerCategory[]; onClose: () => void; onSaved: () => void }) {
   const [type, setType] = useState<"expense" | "income">("expense");
   const [amount, setAmount] = useState("");
-  const [merchant, setMerchant] = useState("");
-  const [category, setCategory] = useState("Food");
+  const expenseCategories = useMemo(() => categories.filter((item) => item.name !== "Income"), [categories]);
+  const [category, setCategory] = useState(expenseCategories[0]?.name ?? "Other");
   const [account, setAccount] = useState("Everyday");
   const [date, setDate] = useState(today);
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
+  useEffect(() => {
+    if (type === "expense" && !expenseCategories.some((item) => item.name === category)) {
+      setCategory(expenseCategories[0]?.name ?? "Other");
+    }
+  }, [expenseCategories, type, category]);
+
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setSaving(true); setError("");
     try {
-      const response = await fetch("/api/transactions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date, type, amount: Number(amount), currency: "AUD", merchant, category: type === "income" ? "Income" : category, account, note, source: "manual" }) });
+      const response = await fetch("/api/transactions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date, type, amount: Number(amount), currency: "AUD", category: type === "income" ? "Income" : category, account, note, source: "manual" }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Could not save the transaction.");
       await onSaved();
@@ -543,12 +545,11 @@ function TransactionDrawer({ today, onClose, onSaved }: { today: string; onClose
     <button className="drawer-backdrop" onClick={onClose} aria-label="Close" />
     <form className="transaction-drawer" onSubmit={submit}>
       <div className="drawer-header"><div><p>Quick entry</p><h2>What was this one?</h2></div><button type="button" onClick={onClose}>×</button></div>
-      <div className="type-toggle"><button type="button" className={type === "expense" ? "active" : ""} onClick={() => setType("expense")}>Expense</button><button type="button" className={type === "income" ? "active" : ""} onClick={() => { setType("income"); setCategory("Income"); }}>Income</button></div>
+      <div className="type-toggle"><button type="button" className={type === "expense" ? "active" : ""} onClick={() => { setType("expense"); setCategory(expenseCategories[0]?.name ?? "Other"); }}>Expense</button><button type="button" className={type === "income" ? "active" : ""} onClick={() => { setType("income"); setCategory("Income"); }}>Income</button></div>
       <label className="amount-field"><span>A$</span><input autoFocus inputMode="decimal" placeholder="0.00" value={amount} onChange={(event) => setAmount(event.target.value)} aria-label="Amount" required /></label>
-      <label className="field-label">Merchant / source<input placeholder={type === "expense" ? "e.g. supermarket or cafe" : "e.g. salary or refund"} value={merchant} onChange={(event) => setMerchant(event.target.value)} required /></label>
-      {type === "expense" && <fieldset className="category-picker"><legend>Choose a category</legend><div>{categoryNames.filter((name) => name !== "Income").map((name) => <button type="button" key={name} className={category === name ? "active" : ""} onClick={() => setCategory(name)}><span>{categoryMeta[name].emoji}</span>{name}</button>)}</div></fieldset>}
+      <label className="field-label">Note<input placeholder={type === "expense" ? "e.g. groceries at Coles" : "e.g. salary or refund"} value={note} onChange={(event) => setNote(event.target.value)} maxLength={240} required /></label>
+      {type === "expense" && <fieldset className="category-picker"><legend>Choose a category</legend><div>{expenseCategories.map((item) => <button type="button" key={item.id} className={category === item.name ? "active" : ""} onClick={() => setCategory(item.name)}><span>{item.emoji}</span>{item.name}</button>)}</div></fieldset>}
       <div className="field-row"><label className="field-label">Account<select value={account} onChange={(event) => setAccount(event.target.value)}><option>Everyday</option><option>Credit</option><option>Savings</option><option>Cash</option></select></label><label className="field-label">Date<input type="date" value={date} max={today} onChange={(event) => setDate(event.target.value)} /></label></div>
-      <label className="field-label">Note (optional)<input placeholder="A small clue for your future self" value={note} onChange={(event) => setNote(event.target.value)} /></label>
       {error && <p className="form-error">{error}</p>}
       <button className="save-button" disabled={saving}>{saving ? "Saving…" : "Save transaction"}</button>
     </form>
@@ -557,7 +558,7 @@ function TransactionDrawer({ today, onClose, onSaved }: { today: string; onClose
 
 function EditTransactionDrawer({ transaction, categories, onClose, onSaved, onDeleted }: { transaction: Transaction; categories: LedgerCategory[]; onClose: () => void; onSaved: () => void; onDeleted: () => void }) {
   const [category, setCategory] = useState(transaction.category);
-  const [note, setNote] = useState(transaction.merchant);
+  const [note, setNote] = useState(transaction.note);
   const [amount, setAmount] = useState((transaction.amountCents / 100).toFixed(2));
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -579,7 +580,7 @@ function EditTransactionDrawer({ transaction, categories, onClose, onSaved, onDe
   };
 
   const remove = async () => {
-    if (!window.confirm(`Delete ${transaction.merchant}? This cannot be undone.`)) return;
+    if (!window.confirm(`Delete ${transaction.note || "this entry"}? This cannot be undone.`)) return;
     setDeleting(true); setError("");
     try {
       const response = await fetch(`/api/transactions?id=${encodeURIComponent(transaction.id)}`, { method: "DELETE" });
@@ -598,7 +599,7 @@ function EditTransactionDrawer({ transaction, categories, onClose, onSaved, onDe
       <label className="field-label">Category<input list="ledger-categories" value={category} onChange={(event) => setCategory(event.target.value)} maxLength={30} required /></label>
       <datalist id="ledger-categories">{categories.map((item) => <option value={item.name} key={item.id} />)}</datalist>
       <div className="edit-category-chips" aria-label="Quick category selection">{categories.map((item) => <button type="button" className={category === item.name ? "active" : ""} key={item.id} onClick={() => setCategory(item.name)}><span>{item.emoji}</span>{item.name}</button>)}</div>
-      <label className="field-label">Note<input value={note} onChange={(event) => setNote(event.target.value)} maxLength={80} required /></label>
+      <label className="field-label">Note<input value={note} onChange={(event) => setNote(event.target.value)} maxLength={240} required /></label>
       <label className="field-label">Amount<div className="edit-amount"><span>A$</span><input inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} required /></div></label>
       <div className="entry-context"><span>{transaction.type === "income" ? "Income" : "Expense"}</span><span>{transaction.account}</span><span>{transaction.occurredAt}</span></div>
       {error && <p className="form-error">{error}</p>}
