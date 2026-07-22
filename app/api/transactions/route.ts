@@ -133,6 +133,29 @@ export async function POST(request: NextRequest) {
   }
 }
 
+export async function PATCH(request: NextRequest) {
+  try {
+    const id = request.nextUrl.searchParams.get("id");
+    if (!id) throw new Error("A transaction ID is required.");
+    const body = await request.json();
+    const category = String(body.category ?? "").trim().slice(0, 30);
+    const merchant = String(body.note ?? "").trim().slice(0, 80);
+    const amountCents = Math.round(Math.abs(Number(body.amount ?? 0)) * 100);
+    if (!category) throw new Error("Category is required.");
+    if (!merchant) throw new Error("Note is required.");
+    if (!Number.isFinite(amountCents) || amountCents <= 0) throw new Error("The amount must be greater than zero.");
+
+    const db = await getDatabase();
+    const existing = await db.prepare("SELECT id FROM transactions WHERE id = ?").bind(id).first();
+    if (!existing) return NextResponse.json({ error: "Transaction not found." }, { status: 404 });
+    await db.prepare("UPDATE transactions SET category = ?, merchant = ?, amount_cents = ? WHERE id = ?")
+      .bind(category, merchant, amountCents, id).run();
+    return NextResponse.json({ ok: true, transaction: { id, category, merchant, amountCents } });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Could not update the transaction." }, { status: 400 });
+  }
+}
+
 export async function DELETE(request: NextRequest) {
   try {
     const id = request.nextUrl.searchParams.get("id");

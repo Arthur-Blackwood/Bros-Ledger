@@ -69,6 +69,7 @@ export function LedgerApp() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [notice, setNotice] = useState("");
   const [importText, setImportText] = useState(`{
   "transactions": [
@@ -126,6 +127,16 @@ export function LedgerApp() {
   }), [selectedDate, visibleTransactions]);
   const maxWeek = Math.max(...weekData.map((item) => item.value), 1);
 
+  const reportGroups = useMemo(() => {
+    const groups = new Map<string, Transaction[]>();
+    transactions.forEach((item) => {
+      const group = groups.get(item.occurredAt) ?? [];
+      group.push(item);
+      groups.set(item.occurredAt, group);
+    });
+    return Array.from(groups.entries()).sort(([dateA], [dateB]) => dateB.localeCompare(dateA));
+  }, [transactions]);
+
   const dailySummary = `${longDate(selectedDate)}: spent ${money(selectedExpense, currency)}, received ${money(selectedIncome, currency)}, net ${money(selectedIncome - selectedExpense, currency, true)}. ${selectedItems.length ? `${selectedItems.length} transaction${selectedItems.length === 1 ? "" : "s"}${categoryTotals[0] ? `, with ${categoryTotals[0][0]} leading this month` : " recorded"}.` : "No transactions recorded for this day."}`;
 
   const copyText = async (text: string, message: string) => {
@@ -144,6 +155,27 @@ export function LedgerApp() {
     anchor.click();
     URL.revokeObjectURL(url);
     setNotice("Ledger JSON exported.");
+  };
+
+  const exportCsv = () => {
+    const escapeCsv = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`;
+    const rows = transactions.map((item) => [
+      item.occurredAt,
+      item.category,
+      item.merchant,
+      ((item.type === "income" ? 1 : -1) * item.amountCents / 100).toFixed(2),
+    ]);
+    const csv = [["Date", "Category", "Note", "Amount"], ...rows]
+      .map((row) => row.map(escapeCsv).join(","))
+      .join("\r\n");
+    const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `daylight-ledger-${today}.csv`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    setNotice("CSV exported.");
   };
 
   const importLedger = async () => {
@@ -260,12 +292,26 @@ export function LedgerApp() {
                 <div className="category-list">{categoryTotals.length ? categoryTotals.slice(0, 5).map(([name, value]) => <div key={name}><span className="category-swatch" style={{ background: categoryMeta[name]?.color ?? categoryMeta.Other.color }} /> <b>{categoryMeta[name]?.emoji ?? "✨"} {name}</b><span>{money(value, currency)} · {monthExpense ? Math.round(value / monthExpense * 100) : 0}%</span></div>) : <p>Your spending mix will appear after a few entries.</p>}</div>
               </div>
             </section>
-            <section className="report-table-card">
-              <div className="section-heading"><div><p>Daily ledger</p><h2>Last 7 days</h2></div><button onClick={() => copyText(dailySummary, "Today's ledger copied.")}>Copy today</button></div>
-              <div className="daily-table">{weekData.slice().reverse().map((day) => {
-                const count = visibleTransactions.filter((item) => item.occurredAt === day.date).length;
-                return <button key={day.date} onClick={() => { setSelectedDate(day.date); setView("overview"); }}><span>{longDate(day.date)}</span><span>{count} {count === 1 ? "entry" : "entries"}</span><strong>{money(day.value, currency)}</strong><i>›</i></button>;
-              })}</div>
+            <section className="report-table-card entry-ledger-card">
+              <div className="ledger-toolbar">
+                <div><p>Detailed ledger</p><h2>All entries</h2><span>Category, Note, Amount</span></div>
+                <button className="csv-button" onClick={exportCsv} disabled={!transactions.length}>⇩ Export CSV</button>
+              </div>
+              {reportGroups.length ? <div className="ledger-table-scroll"><div className="entry-ledger">
+                <div className="ledger-column-head"><span>Category</span><span>Note</span><span>Amount</span><span aria-hidden="true" /></div>
+                {reportGroups.map(([date, items]) => {
+                  const dayNet = items.reduce((sum, item) => sum + (item.type === "income" ? item.amountCents : -item.amountCents), 0);
+                  return <section className="ledger-day" key={date}>
+                    <div className="ledger-day-head"><strong>{longDate(date)}</strong><span>{items.length} {items.length === 1 ? "entry" : "entries"}</span><b>{money(dayNet, items[0]?.currency ?? currency, true)}</b></div>
+                    {items.map((item) => <button className="ledger-entry-row" key={item.id} onClick={() => setEditingTransaction(item)}>
+                      <span className="ledger-category"><i style={{ background: `${categoryMeta[item.category]?.color ?? categoryMeta.Other.color}30` }}>{categoryMeta[item.category]?.emoji ?? "✨"}</i><b>{item.category}</b></span>
+                      <span className="ledger-note">{item.merchant || "No note"}</span>
+                      <strong className={item.type}>{item.type === "income" ? "+" : "−"}{money(item.amountCents, item.currency)}</strong>
+                      <span className="ledger-edit" aria-label={`Edit ${item.merchant}`}>Edit</span>
+                    </button>)}
+                  </section>;
+                })}
+              </div></div> : <div className="ledger-empty"><span>🌿</span><h3>No entries yet</h3><p>Add a transaction and it will appear here.</p><button onClick={() => setDrawerOpen(true)}>Add transaction</button></div>}
             </section>
           </div>
         )}
@@ -306,6 +352,7 @@ export function LedgerApp() {
       </nav>
 
       {drawerOpen && <TransactionDrawer today={today} onClose={() => setDrawerOpen(false)} onSaved={async () => { setDrawerOpen(false); await loadTransactions(); setNotice("Transaction saved."); }} />}
+      {editingTransaction && <EditTransactionDrawer transaction={editingTransaction} onClose={() => setEditingTransaction(null)} onSaved={async () => { setEditingTransaction(null); await loadTransactions(); setNotice("Entry updated."); }} />}
     </main>
   );
 }
@@ -348,6 +395,44 @@ function TransactionDrawer({ today, onClose, onSaved }: { today: string; onClose
       <label className="field-label">Note (optional)<input placeholder="A small clue for your future self" value={note} onChange={(event) => setNote(event.target.value)} /></label>
       {error && <p className="form-error">{error}</p>}
       <button className="save-button" disabled={saving}>{saving ? "Saving…" : "Save transaction"}</button>
+    </form>
+  </div>;
+}
+
+function EditTransactionDrawer({ transaction, onClose, onSaved }: { transaction: Transaction; onClose: () => void; onSaved: () => void }) {
+  const [category, setCategory] = useState(transaction.category);
+  const [note, setNote] = useState(transaction.merchant);
+  const [amount, setAmount] = useState((transaction.amountCents / 100).toFixed(2));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault(); setSaving(true); setError("");
+    try {
+      const response = await fetch(`/api/transactions?id=${encodeURIComponent(transaction.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ category, note, amount: Number(amount) }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Could not update the entry.");
+      await onSaved();
+    } catch (saveError) { setError(saveError instanceof Error ? saveError.message : "Could not update the entry."); }
+    finally { setSaving(false); }
+  };
+
+  return <div className="drawer-layer" role="dialog" aria-modal="true" aria-label="Edit entry">
+    <button className="drawer-backdrop" onClick={onClose} aria-label="Close" />
+    <form className="transaction-drawer edit-drawer" onSubmit={submit}>
+      <div className="drawer-header"><div><p>{longDate(transaction.occurredAt)}</p><h2>Edit entry</h2></div><button type="button" onClick={onClose}>×</button></div>
+      <p className="edit-intro">Update the three details used in your report and CSV exports.</p>
+      <label className="field-label">Category<input list="ledger-categories" value={category} onChange={(event) => setCategory(event.target.value)} maxLength={30} required /></label>
+      <datalist id="ledger-categories">{categoryNames.map((name) => <option value={name} key={name} />)}</datalist>
+      <label className="field-label">Note<input value={note} onChange={(event) => setNote(event.target.value)} maxLength={80} required /></label>
+      <label className="field-label">Amount<div className="edit-amount"><span>A$</span><input inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} required /></div></label>
+      <div className="entry-context"><span>{transaction.type === "income" ? "Income" : "Expense"}</span><span>{transaction.account}</span><span>{transaction.occurredAt}</span></div>
+      {error && <p className="form-error">{error}</p>}
+      <button className="save-button" disabled={saving}>{saving ? "Saving…" : "Save changes"}</button>
     </form>
   </div>;
 }
