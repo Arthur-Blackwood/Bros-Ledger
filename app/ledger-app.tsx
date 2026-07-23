@@ -444,13 +444,41 @@ function ReportsPanel({ transactions, selectedDate, currency, monthExpense, mont
 }
 
 function ReportDetailPanel({ title, subtitle, items, currency, canEdit, onEdit, onClose }: { title: string; subtitle: string; items: Transaction[]; currency: string; canEdit: boolean; onEdit: (transaction: Transaction) => void; onClose: () => void }) {
-  return <section className="report-detail" aria-live="polite">
-    <div className="report-detail-head"><div><p>{subtitle}</p><h3>{title}</h3></div><span>{items.length} {items.length === 1 ? "transaction" : "transactions"}</span><button onClick={onClose} aria-label="Close transaction details">×</button></div>
-    {items.length ? <div className="report-detail-table">
-      <div className="report-detail-columns"><span>Date</span><span>Category</span><span>Note</span><span>Amount</span><span aria-hidden="true" /></div>
-      {items.map((item) => <div className="report-detail-row" key={item.id}><time dateTime={item.occurredAt}>{item.occurredAt}</time><span>{item.category}</span><strong>{displayNote(item.note)}</strong><b className={item.type}>{item.type === "income" ? "+" : "−"}{money(item.amountCents, item.currency || currency)}</b>{canEdit ? <button className="report-detail-edit" onClick={() => onEdit(item)} aria-label={`Edit ${displayNote(item.note)}`}>Edit</button> : <span />}</div>)}
-    </div> : <p className="report-detail-empty">No expenditure was recorded for this date.</p>}
-  </section>;
+  useEffect(() => {
+    const mobileQuery = window.matchMedia("(max-width: 680px)");
+    const previousOverflow = document.body.style.overflow;
+    const syncPageScroll = () => {
+      document.body.style.overflow = mobileQuery.matches ? "hidden" : previousOverflow;
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+
+    syncPageScroll();
+    mobileQuery.addEventListener("change", syncPageScroll);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      mobileQuery.removeEventListener("change", syncPageScroll);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [onClose]);
+
+  const editItem = (item: Transaction) => {
+    onClose();
+    onEdit(item);
+  };
+
+  return <div className="report-detail-layer">
+    <button className="report-detail-backdrop" type="button" onClick={onClose} aria-label="Close transaction details" />
+    <section className="report-detail" aria-live="polite" aria-label={`${subtitle} details for ${title}`}>
+      <div className="report-detail-head"><div><p>{subtitle}</p><h3>{title}</h3></div><span>{items.length} {items.length === 1 ? "transaction" : "transactions"}</span><button type="button" onClick={onClose} aria-label="Close transaction details">×</button></div>
+      {items.length ? <div className="report-detail-table">
+        <div className="report-detail-columns"><span>Date</span><span>Category</span><span>Note</span><span>Amount</span><span aria-hidden="true" /></div>
+        {items.map((item) => <div className="report-detail-row" key={item.id}><time dateTime={item.occurredAt}>{item.occurredAt}</time><span className="report-detail-category">{item.category}</span><strong>{displayNote(item.note)}</strong><b className={item.type}>{item.type === "income" ? "+" : "−"}{money(item.amountCents, item.currency || currency)}</b>{canEdit ? <button className="report-detail-edit" type="button" onClick={() => editItem(item)} aria-label={`Edit ${displayNote(item.note)}`}>Edit</button> : <span className="report-detail-action-spacer" />}</div>)}
+      </div> : <p className="report-detail-empty">No expenditure was recorded for this date.</p>}
+    </section>
+  </div>;
 }
 
 function InfoCallout({ id, children }: { id: string; children: ReactNode }) {
