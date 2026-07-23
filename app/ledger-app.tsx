@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 type Transaction = {
   id: string;
@@ -344,6 +344,7 @@ function ReportsPanel({ transactions, selectedDate, currency, monthExpense, mont
   const [shareStatus, setShareStatus] = useState("");
   const [selectedActivityDate, setSelectedActivityDate] = useState<string | null>(null);
   const [selectedExplorerKey, setSelectedExplorerKey] = useState<string | null>(null);
+  const [openInfo, setOpenInfo] = useState<"activity" | "outliers" | null>(null);
 
   const activity = useMemo(() => {
     const daily = new Map<string, number>();
@@ -408,7 +409,8 @@ function ReportsPanel({ transactions, selectedDate, currency, monthExpense, mont
     </section>
 
     <section className="activity-card analysis-card">
-      <div className="analysis-heading"><div><p>Last 16 weeks</p><h2>Expenditure activity</h2></div><button className="help-button" title="Each square represents one day. Darker squares mean higher expenditure." aria-label="About expenditure activity">?</button></div>
+      <div className="analysis-heading"><div><p>Last 16 weeks</p><h2>Expenditure activity</h2></div><button className="help-button" onClick={() => setOpenInfo((current) => current === "activity" ? null : "activity")} aria-label="About expenditure activity" aria-expanded={openInfo === "activity"} aria-controls="activity-info">?</button></div>
+      {openInfo === "activity" && <InfoCallout id="activity-info">Each square is one calendar day. Its colour shows the total amount spent that day, relative to the other days shown. Click a square to open that day&apos;s expenditure entries.</InfoCallout>}
       <div className="activity-grid" aria-label="Daily expenditure over the last 16 weeks">
         {activity.map((item) => {
           const level = item.value === 0 ? 0 : item.value <= activityMax * .25 ? 1 : item.value <= activityMax * .5 ? 2 : item.value <= activityMax * .75 ? 3 : 4;
@@ -433,8 +435,9 @@ function ReportsPanel({ transactions, selectedDate, currency, monthExpense, mont
       <div className="explorer-controls">
         <div><span>Transaction type</span><div className="segmented-control"><button className={explorerType === "expense" ? "active" : ""} onClick={() => { setExplorerType("expense"); setSelectedExplorerKey(null); }}>Expenditure</button><button className={explorerType === "income" ? "active" : ""} onClick={() => { setExplorerType("income"); setSelectedExplorerKey(null); }}>Income</button></div></div>
         <div><span>Group by</span><div className="segmented-control group-control">{(["day", "month", "year"] as ExplorerGroup[]).map((group) => <button key={group} className={explorerGroup === group ? "active" : ""} onClick={() => { setExplorerGroup(group); setSelectedExplorerKey(null); }}>{group[0].toUpperCase() + group.slice(1)}</button>)}</div></div>
-        <div><span>Filter outliers <button className="help-inline" title="Uses the standard 1.5× interquartile range rule." aria-label="About outlier filtering">?</button></span><button className={`outlier-toggle ${filterOutliers ? "active" : ""}`} onClick={() => { setFilterOutliers((value) => !value); setSelectedExplorerKey(null); }} aria-pressed={filterOutliers}>{filterOutliers ? "Filtering" : "Include all"}</button></div>
+        <div><span>Filter outliers <button className="help-inline" onClick={() => setOpenInfo((current) => current === "outliers" ? null : "outliers")} aria-label="About outlier filtering" aria-expanded={openInfo === "outliers"} aria-controls="outlier-info">?</button></span><button className={`outlier-toggle ${filterOutliers ? "active" : ""}`} onClick={() => { setFilterOutliers((value) => !value); setSelectedExplorerKey(null); }} aria-pressed={filterOutliers}>{filterOutliers ? "Filtering" : "Include all"}</button></div>
       </div>
+      {openInfo === "outliers" && <InfoCallout id="outlier-info">When enabled, the chart and summary exclude unusually large or small grouped totals using the standard 1.5× interquartile-range rule. Your underlying transactions are never changed or deleted.</InfoCallout>}
       <button className="show-transactions" onClick={onShowTransactions}><span>Show all transactions</span><b>{transactions.length}</b></button>
     </section>
   </div>;
@@ -444,10 +447,14 @@ function ReportDetailPanel({ title, subtitle, items, currency, canEdit, onEdit, 
   return <section className="report-detail" aria-live="polite">
     <div className="report-detail-head"><div><p>{subtitle}</p><h3>{title}</h3></div><span>{items.length} {items.length === 1 ? "transaction" : "transactions"}</span><button onClick={onClose} aria-label="Close transaction details">×</button></div>
     {items.length ? <div className="report-detail-table">
-      <div className="report-detail-columns"><span>Date</span><span>Category</span><span>Note</span><span>Amount</span><span>{canEdit ? "Action" : ""}</span></div>
+      <div className="report-detail-columns"><span>Date</span><span>Category</span><span>Note</span><span>Amount</span><span aria-hidden="true" /></div>
       {items.map((item) => <div className="report-detail-row" key={item.id}><time dateTime={item.occurredAt}>{item.occurredAt}</time><span>{item.category}</span><strong>{displayNote(item.note)}</strong><b className={item.type}>{item.type === "income" ? "+" : "−"}{money(item.amountCents, item.currency || currency)}</b>{canEdit ? <button className="report-detail-edit" onClick={() => onEdit(item)} aria-label={`Edit ${displayNote(item.note)}`}>Edit</button> : <span />}</div>)}
     </div> : <p className="report-detail-empty">No expenditure was recorded for this date.</p>}
   </section>;
+}
+
+function InfoCallout({ id, children }: { id: string; children: ReactNode }) {
+  return <aside className="info-callout" id={id} role="note"><span>i</span><p>{children}</p></aside>;
 }
 
 function TransactionsPanel({ groups, currency, canEdit, categoryEmoji, onEdit, onExport, onAdd }: {
