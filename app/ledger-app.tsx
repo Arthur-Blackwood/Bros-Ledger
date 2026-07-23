@@ -33,6 +33,9 @@ const categoryMeta: Record<string, { emoji: string; color: string }> = {
   Other: { emoji: "✨", color: "#a8aea8" },
 };
 
+const donutPalette = ["#efc94c", "#5f99aa", "#6f9b79", "#c96745", "#9a76ab", "#4f8f81"];
+const donutColor = (index: number) => donutPalette[index] ?? `hsl(${(index * 137.508) % 360} 46% 53%)`;
+
 const toDateKey = (date = new Date()) => {
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
   return local.toISOString().slice(0, 10);
@@ -461,7 +464,7 @@ function ReportsPanel({ transactions, selectedDate, currency, categoryEmoji, can
       <div className="section-heading"><div><p>{categoryPeriodMeta.label}</p><h2>Spending by category</h2></div><span>{categoryTotals.length} categories shown</span></div>
       <div className="category-visual">
         <div className="donut" style={{ background: buildDonut(categoryTotals) }}><div><strong>{categoryTotals[0]?.[0] ?? "None yet"}</strong><span>Top spend</span></div></div>
-        <div className="category-list">{categoryTotals.length ? categoryTotals.map(([name, value]) => <div key={name}><span className="category-swatch" style={{ background: categoryMeta[name]?.color ?? categoryMeta.Other.color }} /> <b>{categoryEmoji(name)} {name}</b><span>{money(value, currency)} · {categoryTotal ? Math.round(value / categoryTotal * 100) : 0}%</span></div>) : <p>No spending matches these chart settings.</p>}</div>
+        <div className="category-list">{categoryTotals.length ? categoryTotals.map(([name, value], index) => <div key={name}><span className="category-swatch" style={{ background: donutColor(index) }} /> <b>{categoryEmoji(name)} {name}</b><span>{money(value, currency)} · {categoryTotal ? Math.round(value / categoryTotal * 100) : 0}%</span></div>) : <p>No spending matches these chart settings.</p>}</div>
       </div>
     </section>
 
@@ -798,10 +801,10 @@ function buildDonut(entries: [string, number][]) {
   const total = entries.reduce((sum, [, value]) => sum + value, 0);
   if (!total) return "conic-gradient(#e9e7df 0 100%)";
   let cursor = 0;
-  const segments = entries.slice(0, 6).map(([name, value]) => {
+  const segments = entries.slice(0, 6).map(([, value], index) => {
     const start = cursor;
     cursor += value / total * 100;
-    return `${categoryMeta[name]?.color ?? categoryMeta.Other.color} ${start}% ${cursor}%`;
+    return `${donutColor(index)} ${start}% ${cursor}%`;
   });
   return `conic-gradient(${segments.join(", ")})`;
 }
