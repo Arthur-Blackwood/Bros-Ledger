@@ -152,17 +152,19 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json();
     const category = String(body.category ?? "").trim().slice(0, 30);
     const note = String(body.note ?? "").trim().slice(0, 240);
+    const account = String(body.account ?? "").trim().slice(0, 40);
     const amountCents = Math.round(Math.abs(Number(body.amount ?? 0)) * 100);
     if (!category) throw new Error("Category is required.");
     if (!note) throw new Error("Note is required.");
+    if (!account) throw new Error("Account is required.");
     if (!Number.isFinite(amountCents) || amountCents <= 0) throw new Error("The amount must be greater than zero.");
 
     const db = await getDatabase();
     const existing = await db.prepare("SELECT id FROM transactions WHERE id = ?").bind(id).first();
     if (!existing) return NextResponse.json({ error: "Transaction not found." }, { status: 404 });
-    await db.prepare("UPDATE transactions SET category = ?, note = ?, merchant = ?, amount_cents = ? WHERE id = ?")
-      .bind(category, note, note.slice(0, 80), amountCents, id).run();
-    return NextResponse.json({ ok: true, transaction: { id, category, note, amountCents } });
+    await db.prepare("UPDATE transactions SET category = ?, note = ?, merchant = ?, account = ?, amount_cents = ? WHERE id = ?")
+      .bind(category, note, note.slice(0, 80), account, amountCents, id).run();
+    return NextResponse.json({ ok: true, transaction: { id, category, note, account, amountCents } });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Could not update the transaction." }, { status: 400 });
   }

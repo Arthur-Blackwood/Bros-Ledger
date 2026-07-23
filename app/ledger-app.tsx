@@ -193,9 +193,10 @@ export function LedgerApp() {
       item.occurredAt,
       item.category,
       item.note,
+      item.account,
       ((item.type === "income" ? 1 : -1) * item.amountCents / 100).toFixed(2),
     ]);
-    const csv = [["Date", "Category", "Note", "Amount"], ...rows]
+    const csv = [["Date", "Category", "Note", "Account", "Amount"], ...rows]
       .map((row) => row.map(escapeCsv).join(","))
       .join("\r\n");
     const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" });
@@ -534,8 +535,8 @@ function ReportDetailPanel({ title, subtitle, items, currency, categoryEmoji, ca
     <section className="report-detail" aria-live="polite" aria-label={`${subtitle} details for ${title}`}>
       <div className="report-detail-head"><div><p>{subtitle}</p><h3>{title}</h3></div><span>{items.length} {items.length === 1 ? "transaction" : "transactions"}</span><button type="button" onClick={onClose} aria-label="Close transaction details">×</button></div>
       {items.length ? <div className="report-detail-table">
-        <div className="report-detail-columns"><span>Date</span><span>Category</span><span>Note</span><span>Amount</span><span aria-hidden="true" /></div>
-        {items.map((item) => <div className="report-detail-row" key={item.id}><time dateTime={item.occurredAt}>{item.occurredAt}</time><span className="report-detail-category"><small className="report-detail-mobile-label">Category</small><i aria-hidden="true">{categoryEmoji(item.category)}</i><span>{item.category}</span></span><strong>{displayNote(item.note)}</strong><b className={item.type}>{item.type === "income" ? "+" : "−"}{money(item.amountCents, item.currency || currency)}</b>{canEdit ? <button className="report-detail-edit" type="button" onClick={() => editItem(item)} aria-label={`Edit ${displayNote(item.note)}`}>Edit</button> : <span className="report-detail-action-spacer" />}</div>)}
+        <div className="report-detail-columns"><span>Date</span><span>Category</span><span>Note</span><span>Account</span><span>Amount</span><span aria-hidden="true" /></div>
+        {items.map((item) => <div className="report-detail-row" key={item.id}><time dateTime={item.occurredAt}>{item.occurredAt}</time><span className="report-detail-category"><small className="report-detail-mobile-label">Category</small><i aria-hidden="true">{categoryEmoji(item.category)}</i><span>{item.category}</span></span><strong>{displayNote(item.note)}</strong><span className="report-detail-account"><small className="report-detail-mobile-label">Account</small><span>{item.account}</span></span><b className={item.type}>{item.type === "income" ? "+" : "−"}{money(item.amountCents, item.currency || currency)}</b>{canEdit ? <button className="report-detail-edit" type="button" onClick={() => editItem(item)} aria-label={`Edit ${displayNote(item.note)}`}>Edit</button> : <span className="report-detail-action-spacer" />}</div>)}
       </div> : <p className="report-detail-empty">No expenditure was recorded for this date.</p>}
     </section>
   </div>;
@@ -558,18 +559,19 @@ function TransactionsPanel({ groups, currency, canEdit, categoryEmoji, onEdit, o
   return <div className="transactions-page">
     <section className="report-table-card entry-ledger-card">
       <div className="ledger-toolbar">
-        <div><p>Detailed ledger</p><h2>All entries</h2><span>{transactionCount} transactions · Category, note and amount</span></div>
+        <div><p>Detailed ledger</p><h2>All entries</h2><span>{transactionCount} transactions · Category, note, account and amount</span></div>
         <button className="csv-button" onClick={onExport} disabled={!transactionCount}>⇩ Export CSV</button>
       </div>
       {groups.length ? <div className="ledger-table-scroll"><div className="entry-ledger">
-        <div className="ledger-column-head"><span>Category</span><span>Note</span><span>Amount</span><span aria-hidden="true" /></div>
+        <div className="ledger-column-head"><span>Category</span><span>Note</span><span>Account</span><span>Amount</span><span aria-hidden="true" /></div>
         {groups.map(([date, items]) => {
           const dayNet = items.reduce((sum, item) => sum + (item.type === "income" ? item.amountCents : -item.amountCents), 0);
           return <section className="ledger-day" key={date}>
             <div className="ledger-day-head"><strong>{longDate(date)}</strong><span>{items.length} {items.length === 1 ? "entry" : "entries"}</span><b>{money(dayNet, items[0]?.currency ?? currency, true)}</b></div>
-            {items.map((item) => <button className="ledger-entry-row" key={item.id} onClick={() => canEdit && onEdit(item)} disabled={!canEdit} aria-label={canEdit ? `Edit ${displayNote(item.note)}` : `${item.category}, ${displayNote(item.note)}, view only`}>
+            {items.map((item) => <button className="ledger-entry-row" key={item.id} onClick={() => canEdit && onEdit(item)} disabled={!canEdit} aria-label={canEdit ? `Edit ${displayNote(item.note)}, ${item.account}` : `${item.category}, ${displayNote(item.note)}, ${item.account}, view only`}>
               <span className="ledger-category"><i style={{ background: `${categoryMeta[item.category]?.color ?? categoryMeta.Other.color}30` }}>{categoryEmoji(item.category)}</i><b>{item.category}</b></span>
               <span className="ledger-note">{displayNote(item.note)}</span>
+              <span className="ledger-account">{item.account}</span>
               <strong className={item.type}>{item.type === "income" ? "+" : "−"}{money(item.amountCents, item.currency)}</strong>
               <span className="ledger-edit">{canEdit ? "Edit" : "View"}</span>
             </button>)}
@@ -747,6 +749,7 @@ function AutoGrowingNoteInput({ value, onChange, placeholder }: { value: string;
 function EditTransactionDrawer({ transaction, categories, onClose, onSaved, onDeleted }: { transaction: Transaction; categories: LedgerCategory[]; onClose: () => void; onSaved: () => void; onDeleted: () => void }) {
   const [category, setCategory] = useState(transaction.category);
   const [note, setNote] = useState(transaction.note);
+  const [account, setAccount] = useState(transaction.account);
   const [amount, setAmount] = useState((transaction.amountCents / 100).toFixed(2));
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -758,7 +761,7 @@ function EditTransactionDrawer({ transaction, categories, onClose, onSaved, onDe
       const response = await fetch(`/api/transactions?id=${encodeURIComponent(transaction.id)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ category, note, amount: Number(amount) }),
+        body: JSON.stringify({ category, note, account, amount: Number(amount) }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Could not update the entry.");
@@ -783,13 +786,15 @@ function EditTransactionDrawer({ transaction, categories, onClose, onSaved, onDe
     <button className="drawer-backdrop" onClick={onClose} aria-label="Close" />
     <form className="transaction-drawer edit-drawer" onSubmit={submit}>
       <div className="drawer-header"><div><p>{longDate(transaction.occurredAt)}</p><h2>Edit entry</h2></div><button type="button" onClick={onClose}>×</button></div>
-      <p className="edit-intro">Update the three details used in your report and CSV exports.</p>
+      <p className="edit-intro">Update the category, note, account and amount used throughout your ledger and CSV exports.</p>
       <label className="field-label">Category<input list="ledger-categories" value={category} onChange={(event) => setCategory(event.target.value)} maxLength={30} required /></label>
       <datalist id="ledger-categories">{categories.map((item) => <option value={item.name} key={item.id} />)}</datalist>
       <div className="edit-category-chips" aria-label="Quick category selection">{categories.map((item) => <button type="button" className={category === item.name ? "active" : ""} key={item.id} onClick={() => setCategory(item.name)}><span>{item.emoji}</span>{item.name}</button>)}</div>
       <label className="field-label">Note<AutoGrowingNoteInput value={note} onChange={setNote} /></label>
+      <label className="field-label">Account<input list="ledger-accounts" value={account} onChange={(event) => setAccount(event.target.value)} maxLength={40} required /></label>
+      <datalist id="ledger-accounts"><option value="Everyday" /><option value="Credit" /><option value="Savings" /><option value="Cash" /></datalist>
       <label className="field-label">Amount<div className="edit-amount"><span>A$</span><input inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} required /></div></label>
-      <div className="entry-context"><span>{transaction.type === "income" ? "Income" : "Expense"}</span><span>{transaction.account}</span><span>{transaction.occurredAt}</span></div>
+      <div className="entry-context"><span>{transaction.type === "income" ? "Income" : "Expense"}</span><span>{transaction.occurredAt}</span></div>
       {error && <p className="form-error">{error}</p>}
       <button className="save-button" disabled={saving || deleting}>{saving ? "Saving…" : "Save changes"}</button>
       <button type="button" className="delete-entry-button" onClick={remove} disabled={saving || deleting}>{deleting ? "Deleting…" : "Delete entry"}</button>
