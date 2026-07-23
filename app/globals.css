@@ -144,3 +144,8 @@ button { color: inherit; }
 }
 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+
+@media (prefers-color-scheme: dark) {
+  .brand-mark, .auth-mark { color: #fff; background: #2d5b4c; }
+  .add-button, .mobile-nav .mobile-add, .save-button, .save-category-button, .auth-card form > button { color: #102018; background: #83c7ac; box-shadow: 0 10px 24px rgba(0, 0, 0, .26); }
+}
