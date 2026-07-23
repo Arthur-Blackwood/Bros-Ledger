@@ -22,6 +22,8 @@ type LedgerRole = "owner" | "family";
 type ExplorerType = "expense" | "income";
 type ExplorerGroup = "day" | "month" | "year";
 type CategoryPeriod = "month" | "quarter" | "year";
+type ActivityView = "both" | "expense" | "income";
+type ActivityWeeks = 8 | 16 | 26;
 
 type ReportChartPreferences = {
   explorerType: ExplorerType;
@@ -30,6 +32,9 @@ type ReportChartPreferences = {
   categoryPeriod: CategoryPeriod;
   categoryFilterOutliers: boolean;
   groupSmallCategories: boolean;
+  activityView: ActivityView;
+  activityWeeks: ActivityWeeks;
+  activityFilterOutliers: boolean;
 };
 
 const reportChartPreferencesKey = "daylight-ledger:report-chart-preferences:v1";
@@ -40,6 +45,9 @@ const defaultReportChartPreferences: ReportChartPreferences = {
   categoryPeriod: "month",
   categoryFilterOutliers: false,
   groupSmallCategories: true,
+  activityView: "both",
+  activityWeeks: 16,
+  activityFilterOutliers: false,
 };
 
 const readReportChartPreferences = (): ReportChartPreferences => {
@@ -53,6 +61,9 @@ const readReportChartPreferences = (): ReportChartPreferences => {
       categoryPeriod: value.categoryPeriod === "quarter" || value.categoryPeriod === "year" ? value.categoryPeriod : "month",
       categoryFilterOutliers: Boolean(value.categoryFilterOutliers),
       groupSmallCategories: typeof value.groupSmallCategories === "boolean" ? value.groupSmallCategories : true,
+      activityView: value.activityView === "expense" || value.activityView === "income" ? value.activityView : "both",
+      activityWeeks: value.activityWeeks === 8 || value.activityWeeks === 26 ? value.activityWeeks : 16,
+      activityFilterOutliers: Boolean(value.activityFilterOutliers),
     };
   } catch {
     return defaultReportChartPreferences;
@@ -113,6 +124,17 @@ const quartile = (values: number[], ratio: number) => {
   const fraction = position - lower;
   return sorted[lower] + (sorted[lower + 1] !== undefined ? fraction * (sorted[lower + 1] - sorted[lower]) : 0);
 };
+
+const activityScaleMaximum = (values: number[], filterOutliers: boolean) => {
+  const positive = values.filter((value) => value > 0);
+  const maximum = positive.length ? Math.max(...positive) : 1;
+  if (!filterOutliers || positive.length < 4) return maximum;
+  const q1 = quartile(positive, .25);
+  const q3 = quartile(positive, .75);
+  return Math.max(1, Math.min(maximum, q3 + 1.5 * (q3 - q1)));
+};
+
+const activityLevel = (value: number, maximum: number) => value === 0 ? 0 : value <= maximum * .25 ? 1 : value <= maximum * .5 ? 2 : value <= maximum * .75 ? 3 : 4;
 
 export function LedgerApp() {
   const today = useMemo(() => toDateKey(), []);
@@ -383,6 +405,9 @@ function ReportsPanel({ transactions, selectedDate, currency, categoryEmoji, can
   const [categoryPeriod, setCategoryPeriod] = useState<CategoryPeriod>("month");
   const [categoryFilterOutliers, setCategoryFilterOutliers] = useState(false);
   const [groupSmallCategories, setGroupSmallCategories] = useState(true);
+  const [activityView, setActivityView] = useState<ActivityView>("both");
+  const [activityWeeks, setActivityWeeks] = useState<ActivityWeeks>(16);
+  const [activityFilterOutliers, setActivityFilterOutliers] = useState(false);
   const [shareStatus, setShareStatus] = useState("");
   const [selectedActivityDate, setSelectedActivityDate] = useState<string | null>(null);
   const [selectedExplorerKey, setSelectedExplorerKey] = useState<string | null>(null);
@@ -397,6 +422,9 @@ function ReportsPanel({ transactions, selectedDate, currency, categoryEmoji, can
     setCategoryPeriod(saved.categoryPeriod);
     setCategoryFilterOutliers(saved.categoryFilterOutliers);
     setGroupSmallCategories(saved.groupSmallCategories);
+    setActivityView(saved.activityView);
+    setActivityWeeks(saved.activityWeeks);
+    setActivityFilterOutliers(saved.activityFilterOutliers);
     setChartPreferencesReady(true);
   }, []);
 
@@ -410,11 +438,14 @@ function ReportsPanel({ transactions, selectedDate, currency, categoryEmoji, can
         categoryPeriod,
         categoryFilterOutliers,
         groupSmallCategories,
+        activityView,
+        activityWeeks,
+        activityFilterOutliers,
       } satisfies ReportChartPreferences));
     } catch {
       // Preferences remain usable for the current visit when browser storage is unavailable.
     }
-  }, [chartPreferencesReady, explorerType, explorerGroup, filterOutliers, categoryPeriod, categoryFilterOutliers, groupSmallCategories]);
+  }, [chartPreferencesReady, explorerType, explorerGroup, filterOutliers, categoryPeriod, categoryFilterOutliers, groupSmallCategories, activityView, activityWeeks, activityFilterOutliers]);
 
   const categoryPeriodMeta = useMemo(() => {
     const end = selectedDate;
@@ -469,14 +500,20 @@ function ReportsPanel({ transactions, selectedDate, currency, categoryEmoji, can
   const excludedCategoryTransactions = categorySourceTransactions.length - categoryTransactions.length;
 
   const activity = useMemo(() => {
-    const daily = new Map<string, number>();
-    transactions.filter((item) => item.type === "expense").forEach((item) => daily.set(item.occurredAt, (daily.get(item.occurredAt) ?? 0) + item.amountCents));
-    return Array.from({ length: 112 }, (_, index) => {
-      const date = dateShift(selectedDate, index - 111);
-      return { date, value: daily.get(date) ?? 0 };
+    const daily = new Map<string, { expense: number; income: number }>();
+    transactions.forEach((item) => {
+      const totals = daily.get(item.occurredAt) ?? { expense: 0, income: 0 };
+      totals[item.type] += item.amountCents;
+      daily.set(item.occurredAt, totals);
     });
-  }, [transactions, selectedDate]);
-  const activityMax = Math.max(...activity.map((item) => item.value), 1);
+    const days = activityWeeks * 7;
+    return Array.from({ length: days }, (_, index) => {
+      const date = dateShift(selectedDate, index - days + 1);
+      return { date, ...(daily.get(date) ?? { expense: 0, income: 0 }) };
+    });
+  }, [transactions, selectedDate, activityWeeks]);
+  const expenseActivityMax = activityScaleMaximum(activity.map((item) => item.expense), activityFilterOutliers);
+  const incomeActivityMax = activityScaleMaximum(activity.map((item) => item.income), activityFilterOutliers);
 
   const rawSeries = useMemo(() => {
     const grouped = new Map<string, number>();
@@ -505,7 +542,7 @@ function ReportsPanel({ transactions, selectedDate, currency, categoryEmoji, can
   const explorerAverage = explorerValues.length ? Math.round(explorerTotal / explorerValues.length) : 0;
   const chartMax = Math.max(explorerHighest, 1);
   const tickIndexes = Array.from(new Set([0, Math.floor((series.length - 1) / 3), Math.floor((series.length - 1) * 2 / 3), series.length - 1])).filter((index) => index >= 0);
-  const activityDetails = selectedActivityDate ? transactions.filter((item) => item.type === "expense" && item.occurredAt === selectedActivityDate) : [];
+  const activityDetails = selectedActivityDate ? transactions.filter((item) => item.occurredAt === selectedActivityDate && (activityView === "both" || item.type === activityView)) : [];
   const explorerDetails = selectedExplorerKey ? transactions.filter((item) => item.type === explorerType && explorerKey(item.occurredAt, explorerGroup) === selectedExplorerKey) : [];
 
   const shareExplorer = async () => {
@@ -535,16 +572,26 @@ function ReportsPanel({ transactions, selectedDate, currency, categoryEmoji, can
     </section>
 
     <section className="activity-card analysis-card">
-      <div className="analysis-heading"><div><p>Last 16 weeks</p><h2>Expenditure activity</h2></div><button className="help-button" onClick={() => setOpenInfo((current) => current === "activity" ? null : "activity")} aria-label="About expenditure activity" aria-expanded={openInfo === "activity"} aria-controls="activity-info">?</button></div>
-      {openInfo === "activity" && <InfoCallout id="activity-info">Each square is one calendar day. Its colour shows the total amount spent that day, relative to the other days shown. Click a square to open that day&apos;s expenditure entries.</InfoCallout>}
-      <div className="activity-grid" aria-label="Daily expenditure over the last 16 weeks">
+      <div className="analysis-heading"><div><p>Last {activityWeeks} weeks</p><h2>{activityView === "both" ? "Cash flow activity" : activityView === "expense" ? "Expenditure activity" : "Income activity"}</h2></div><button className="help-button" onClick={() => setOpenInfo((current) => current === "activity" ? null : "activity")} aria-label="About cash flow activity" aria-expanded={openInfo === "activity"} aria-controls="activity-info">?</button></div>
+      {openInfo === "activity" && <InfoCallout id="activity-info">Each square is one calendar day. In Both mode, days containing income and expenditure are split into two colours; a day containing only one flow uses that colour across the whole cell, and an empty day stays neutral. Outlier filtering caps the colour scale so unusual days do not flatten the rest of the chart. Exact transactions remain unchanged and available when you click a date.</InfoCallout>}
+      <div className="activity-controls">
+        <div><span>Display</span><div className="segmented-control group-control">{(["both", "expense", "income"] as ActivityView[]).map((view) => <button type="button" key={view} className={activityView === view ? "active" : ""} onClick={() => { setActivityView(view); setSelectedActivityDate(null); }}>{view === "both" ? "Both" : view === "expense" ? "Expense" : "Income"}</button>)}</div></div>
+        <div><span>Period</span><div className="segmented-control group-control">{([8, 16, 26] as ActivityWeeks[]).map((weeks) => <button type="button" key={weeks} className={activityWeeks === weeks ? "active" : ""} onClick={() => { setActivityWeeks(weeks); setSelectedActivityDate(null); }}>{weeks} weeks</button>)}</div></div>
+        <div><span>Filter outliers</span><button type="button" className={`outlier-toggle ${activityFilterOutliers ? "active" : ""}`} onClick={() => setActivityFilterOutliers((value) => !value)} aria-pressed={activityFilterOutliers}>{activityFilterOutliers ? "Filtering" : "Include all"}</button></div>
+      </div>
+      <div className="activity-grid" style={{ gridTemplateColumns: `repeat(${activityWeeks}, minmax(7px, 1fr))` }} aria-label={`Daily ${activityView === "both" ? "income and expenditure" : activityView} over the last ${activityWeeks} weeks`}>
         {activity.map((item) => {
-          const level = item.value === 0 ? 0 : item.value <= activityMax * .25 ? 1 : item.value <= activityMax * .5 ? 2 : item.value <= activityMax * .75 ? 3 : 4;
-          return <button key={item.date} type="button" className={`activity-cell level-${level} ${selectedActivityDate === item.date ? "selected" : ""}`} title={`${longDate(item.date)}: ${money(item.value, currency)}`} aria-label={`Show expenditure for ${item.date}: ${money(item.value, currency)}`} aria-pressed={selectedActivityDate === item.date} onClick={() => setSelectedActivityDate((current) => current === item.date ? null : item.date)} />;
+          const expenseLevel = activityLevel(item.expense, expenseActivityMax);
+          const incomeLevel = activityLevel(item.income, incomeActivityMax);
+          const hasBoth = activityView === "both" && item.expense > 0 && item.income > 0;
+          const singleType = activityView === "both" ? item.expense > 0 ? "expense" : item.income > 0 ? "income" : "" : activityView;
+          const singleLevel = singleType === "expense" ? expenseLevel : singleType === "income" ? incomeLevel : 0;
+          const description = `${longDate(item.date)}: expenditure ${money(item.expense, currency)}, income ${money(item.income, currency)}, net ${money(item.income - item.expense, currency, true)}`;
+          return <button key={item.date} type="button" className={`activity-cell ${hasBoth ? "split" : singleType} ${hasBoth ? "" : `level-${singleLevel}`} ${selectedActivityDate === item.date ? "selected" : ""}`} title={description} aria-label={`Show activity for ${description}`} aria-pressed={selectedActivityDate === item.date} onClick={() => setSelectedActivityDate((current) => current === item.date ? null : item.date)}>{hasBoth && <><i className={`activity-half expense level-${expenseLevel}`} /><i className={`activity-half income level-${incomeLevel}`} /></>}</button>;
         })}
       </div>
-      <div className="activity-legend"><span><i className="level-1" />Up to {money(activityMax * .25, currency)}</span><span><i className="level-2" />Up to {money(activityMax * .5, currency)}</span><span><i className="level-3" />Up to {money(activityMax * .75, currency)}</span><span><i className="level-4" />Above {money(activityMax * .75, currency)}</span></div>
-      {selectedActivityDate && <ReportDetailPanel title={longDate(selectedActivityDate)} subtitle="Expenditure activity" items={activityDetails} currency={currency} categoryEmoji={categoryEmoji} canEdit={canEdit} onEdit={onEditTransaction} onClose={() => setSelectedActivityDate(null)} />}
+      <div className="activity-legend">{activityView !== "income" && <span><i className="expense level-3" />Expense · scale to {money(expenseActivityMax, currency)}</span>}{activityView !== "expense" && <span><i className="income level-3" />Income · scale to {money(incomeActivityMax, currency)}</span>}<span><i className="level-0" />No activity</span><small>Darker colour means a larger daily total.</small></div>
+      {selectedActivityDate && <ReportDetailPanel title={longDate(selectedActivityDate)} subtitle={activityView === "both" ? "Cash flow activity" : activityView === "expense" ? "Expenditure activity" : "Income activity"} items={activityDetails} currency={currency} categoryEmoji={categoryEmoji} canEdit={canEdit} onEdit={onEditTransaction} onClose={() => setSelectedActivityDate(null)} />}
     </section>
 
     <section className="explorer-card analysis-card">
