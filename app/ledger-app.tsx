@@ -312,7 +312,7 @@ export function LedgerApp() {
 
         {view === "transactions" && <TransactionsPanel groups={reportGroups} currency={currency} canEdit={canEdit} categoryEmoji={categoryEmoji} onEdit={setEditingTransaction} onExport={exportCsv} onAdd={() => setDrawerOpen(true)} />}
 
-        {view === "personalization" && canEdit && <PersonalizationPanel categories={categories} onChanged={loadCategories} />}
+        {view === "personalization" && canEdit && <PersonalizationPanel categories={categories} onChanged={async () => { await Promise.all([loadCategories(), loadTransactions()]); }} />}
 
       </section>
 
@@ -677,7 +677,7 @@ function PersonalizationPanel({ categories, onChanged }: { categories: LedgerCat
       <form onSubmit={submit}>
         <label className="field-label">Emoji<input className="emoji-input" value={emoji} onChange={(event) => setEmoji(event.target.value)} maxLength={8} placeholder="✨" required /></label>
         <label className="field-label">Category name<input value={name} onChange={(event) => setName(event.target.value)} maxLength={30} placeholder="e.g. Subscriptions" required /></label>
-        <p className="category-editor-note">Renaming or removing a shortcut does not rewrite or delete existing ledger entries.</p>
+        <p className="category-editor-note">Renaming a category updates every matching past entry. Changing its emoji refreshes the category display throughout your ledger. Removing a shortcut does not delete entries.</p>
         {error && <p className="form-error">{error}</p>}
         <div className="category-editor-actions">{editing && <button type="button" className="danger-button" onClick={remove} disabled={saving}>Remove</button>}<button className="save-category-button" disabled={saving}>{saving ? "Saving…" : editing ? "Save category" : "Add category"}</button></div>
       </form>

@@ -83,10 +83,13 @@ export async function PATCH(request: NextRequest) {
     if (!id) throw new Error("A category ID is required.");
     const { name, emoji } = cleanCategory(await request.json());
     const db = await getDatabase();
-    const existing = await db.prepare("SELECT id FROM ledger_categories WHERE id = ?").bind(id).first();
+    const existing = await db.prepare("SELECT id, name FROM ledger_categories WHERE id = ?").bind(id).first<{ id: string; name: string }>();
     if (!existing) return NextResponse.json({ error: "Category not found." }, { status: 404 });
-    await db.prepare("UPDATE ledger_categories SET name = ?, emoji = ? WHERE id = ?").bind(name, emoji, id).run();
-    return NextResponse.json({ category: { id, name, emoji } });
+    const statements = [db.prepare("UPDATE ledger_categories SET name = ?, emoji = ? WHERE id = ?").bind(name, emoji, id)];
+    if (existing.name !== name) statements.unshift(db.prepare("UPDATE transactions SET category = ? WHERE category = ?").bind(name, existing.name));
+    const results = await db.batch(statements);
+    const syncedTransactions = existing.name === name ? 0 : Number(results[0]?.meta.changes ?? 0);
+    return NextResponse.json({ category: { id, name, emoji }, syncedTransactions });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not update the category.";
     return NextResponse.json({ error: message.includes("UNIQUE") ? "That category already exists." : message }, { status: 400 });
