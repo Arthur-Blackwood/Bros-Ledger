@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 type Transaction = {
   id: string;
@@ -625,10 +625,81 @@ function PinGate({ onAuthenticated }: { onAuthenticated: (role: LedgerRole) => v
 
 function PersonalizationPanel({ categories, onChanged }: { categories: LedgerCategory[]; onChanged: () => Promise<void> }) {
   const [editing, setEditing] = useState<LedgerCategory | null>(null);
+  const [orderedCategories, setOrderedCategories] = useState(categories);
+  const orderedCategoriesRef = useRef(categories);
+  const draggingCategoryRef = useRef<string | null>(null);
+  const [draggingCategory, setDraggingCategory] = useState<string | null>(null);
+  const [savingOrder, setSavingOrder] = useState(false);
   const [name, setName] = useState("");
   const [emoji, setEmoji] = useState("✨");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    orderedCategoriesRef.current = categories;
+    setOrderedCategories(categories);
+  }, [categories]);
+
+  const moveCategory = (sourceId: string, targetId: string) => {
+    const current = orderedCategoriesRef.current;
+    const sourceIndex = current.findIndex((category) => category.id === sourceId);
+    const targetIndex = current.findIndex((category) => category.id === targetId);
+    if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return current;
+    const next = [...current];
+    const [moved] = next.splice(sourceIndex, 1);
+    next.splice(targetIndex, 0, moved);
+    orderedCategoriesRef.current = next;
+    setOrderedCategories(next);
+    return next;
+  };
+
+  const saveCategoryOrder = async (ordered = orderedCategoriesRef.current) => {
+    setSavingOrder(true); setError("");
+    try {
+      const response = await fetch("/api/categories", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: ordered.map((category) => category.id) }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Could not save the category order.");
+      await onChanged();
+    } catch (orderError) {
+      setError(orderError instanceof Error ? orderError.message : "Could not save the category order.");
+      await onChanged();
+    } finally { setSavingOrder(false); }
+  };
+
+  const startCategoryDrag = (event: ReactPointerEvent<HTMLButtonElement>, categoryId: string) => {
+    if (savingOrder) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    draggingCategoryRef.current = categoryId;
+    setDraggingCategory(categoryId);
+  };
+
+  const updateCategoryDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const sourceId = draggingCategoryRef.current;
+    if (!sourceId) return;
+    const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>("[data-category-id]");
+    const targetId = target?.dataset.categoryId;
+    if (targetId) moveCategory(sourceId, targetId);
+  };
+
+  const finishCategoryDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (!draggingCategoryRef.current) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    draggingCategoryRef.current = null;
+    setDraggingCategory(null);
+    void saveCategoryOrder();
+  };
+
+  const moveCategoryWithKeyboard = (event: ReactKeyboardEvent<HTMLButtonElement>, categoryId: string) => {
+    if (savingOrder) return;
+    if (event.key !== "ArrowUp" && event.key !== "ArrowLeft" && event.key !== "ArrowDown" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    const current = orderedCategoriesRef.current;
+    const index = current.findIndex((category) => category.id === categoryId);
+    const offset = event.key === "ArrowUp" || event.key === "ArrowLeft" ? -1 : 1;
+    const target = current[index + offset];
+    if (target) void saveCategoryOrder(moveCategory(categoryId, target.id));
+  };
 
   const beginEdit = (category: LedgerCategory) => {
     setEditing(category); setName(category.name); setEmoji(category.emoji); setError("");
@@ -669,9 +740,9 @@ function PersonalizationPanel({ categories, onChanged }: { categories: LedgerCat
 
   return <div className="personalization-grid">
     <section className="category-library-card">
-      <div className="section-heading"><div><p>Quick selection</p><h2>Your categories</h2></div><span>{categories.length} saved</span></div>
-      <p className="personalization-copy">These appear as shortcuts whenever you edit an entry in Reports.</p>
-      <div className="category-library">{categories.map((category) => <button key={category.id} className={editing?.id === category.id ? "active" : ""} onClick={() => beginEdit(category)}><span>{category.emoji}</span><b>{category.name}</b><em>Edit</em></button>)}</div>
+      <div className="section-heading"><div><p>Quick selection</p><h2>Your categories</h2></div><span>{savingOrder ? "Saving order…" : `${categories.length} saved`}</span></div>
+      <p className="personalization-copy">Drag the handles to set the shortcut order used in Add Transaction and every category editor.</p>
+      <div className="category-library">{orderedCategories.map((category) => <div key={category.id} data-category-id={category.id} className={`category-library-item ${editing?.id === category.id ? "active" : ""} ${draggingCategory === category.id ? "dragging" : ""}`}><button type="button" className="category-edit-button" onClick={() => beginEdit(category)}><span>{category.emoji}</span><b>{category.name}</b><em>Edit</em></button><button type="button" className="category-drag-handle" aria-label={`Drag ${category.name} to reorder. Use arrow keys to move it.`} onPointerDown={(event) => startCategoryDrag(event, category.id)} onPointerMove={updateCategoryDrag} onPointerUp={finishCategoryDrag} onPointerCancel={finishCategoryDrag} onKeyDown={(event) => moveCategoryWithKeyboard(event, category.id)}>⠿</button></div>)}</div>
       {!categories.length && <div className="category-library-empty">No quick categories yet.</div>}
     </section>
     <section className="category-editor-card">

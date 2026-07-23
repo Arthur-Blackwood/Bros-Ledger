@@ -96,6 +96,26 @@ export async function PATCH(request: NextRequest) {
   }
 }
 
+export async function PUT(request: NextRequest) {
+  try {
+    const session = await readSession(request);
+    if (!session) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
+    if (session.role !== "owner") return NextResponse.json({ error: "This account has view-only access." }, { status: 403 });
+    const body = await request.json();
+    const ids = Array.isArray(body.ids) ? body.ids.map((id: unknown) => String(id)) : [];
+    if (!ids.length || ids.length > 100 || new Set(ids).size !== ids.length) throw new Error("A valid category order is required.");
+    const db = await getDatabase();
+    await seedCategories(db);
+    const existing = await db.prepare("SELECT id FROM ledger_categories").all<{ id: string }>();
+    const existingIds = new Set(existing.results.map((category) => category.id));
+    if (existingIds.size !== ids.length || ids.some((id: string) => !existingIds.has(id))) throw new Error("The category list changed. Refresh and try again.");
+    await db.batch(ids.map((id: string, index: number) => db.prepare("UPDATE ledger_categories SET sort_order = ? WHERE id = ?").bind(index, id)));
+    return NextResponse.json({ ok: true, ids });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Could not reorder categories." }, { status: 400 });
+  }
+}
+
 export async function DELETE(request: NextRequest) {
   try {
     const session = await readSession(request);
