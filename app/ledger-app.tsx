@@ -15,7 +15,8 @@ type Transaction = {
   source: string;
 };
 
-type LedgerCategory = { id: string; name: string; emoji: string };
+type CategoryType = "expense" | "income";
+type LedgerCategory = { id: string; name: string; emoji: string; type: CategoryType };
 type View = "overview" | "reports" | "transactions" | "personalization";
 type LedgerRole = "owner" | "family";
 type ExplorerType = "expense" | "income";
@@ -628,10 +629,12 @@ function PersonalizationPanel({ categories, onChanged }: { categories: LedgerCat
   const [orderedCategories, setOrderedCategories] = useState(categories);
   const orderedCategoriesRef = useRef(categories);
   const draggingCategoryRef = useRef<string | null>(null);
+  const dragCleanupRef = useRef<(() => void) | null>(null);
   const [draggingCategory, setDraggingCategory] = useState<string | null>(null);
   const [savingOrder, setSavingOrder] = useState(false);
   const [name, setName] = useState("");
   const [emoji, setEmoji] = useState("✨");
+  const [categoryType, setCategoryType] = useState<CategoryType>("expense");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -640,14 +643,18 @@ function PersonalizationPanel({ categories, onChanged }: { categories: LedgerCat
     setOrderedCategories(categories);
   }, [categories]);
 
-  const moveCategory = (sourceId: string, targetId: string) => {
+  useEffect(() => () => dragCleanupRef.current?.(), []);
+
+  const placeCategory = (sourceId: string, targetType: CategoryType, targetIndex: number) => {
     const current = orderedCategoriesRef.current;
-    const sourceIndex = current.findIndex((category) => category.id === sourceId);
-    const targetIndex = current.findIndex((category) => category.id === targetId);
-    if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return current;
-    const next = [...current];
-    const [moved] = next.splice(sourceIndex, 1);
-    next.splice(targetIndex, 0, moved);
+    const source = current.find((category) => category.id === sourceId);
+    if (!source) return current;
+    const expense = current.filter((category) => category.type === "expense" && category.id !== sourceId);
+    const income = current.filter((category) => category.type === "income" && category.id !== sourceId);
+    const destination = targetType === "expense" ? expense : income;
+    destination.splice(Math.max(0, Math.min(targetIndex, destination.length)), 0, { ...source, type: targetType });
+    const next = [...expense, ...income];
+    if (next.every((category, index) => category.id === current[index]?.id && category.type === current[index]?.type)) return current;
     orderedCategoriesRef.current = next;
     setOrderedCategories(next);
     return next;
@@ -656,7 +663,10 @@ function PersonalizationPanel({ categories, onChanged }: { categories: LedgerCat
   const saveCategoryOrder = async (ordered = orderedCategoriesRef.current) => {
     setSavingOrder(true); setError("");
     try {
-      const response = await fetch("/api/categories", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: ordered.map((category) => category.id) }) });
+      const response = await fetch("/api/categories", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+        expenseIds: ordered.filter((category) => category.type === "expense").map((category) => category.id),
+        incomeIds: ordered.filter((category) => category.type === "income").map((category) => category.id),
+      }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Could not save the category order.");
       await onChanged();
@@ -666,28 +676,45 @@ function PersonalizationPanel({ categories, onChanged }: { categories: LedgerCat
     } finally { setSavingOrder(false); }
   };
 
+  const updateCategoryDrag = (sourceId: string, clientX: number, clientY: number) => {
+    const hit = document.elementFromPoint(clientX, clientY);
+    const zone = hit?.closest<HTMLElement>("[data-category-type]");
+    const targetType = zone?.dataset.categoryType as CategoryType | undefined;
+    if (!zone || (targetType !== "expense" && targetType !== "income")) return;
+    const targets = Array.from(zone.querySelectorAll<HTMLElement>("[data-category-id]")).filter((item) => item.dataset.categoryId !== sourceId);
+    const targetIndex = targets.findIndex((item) => clientY < item.getBoundingClientRect().top + item.getBoundingClientRect().height / 2);
+    placeCategory(sourceId, targetType, targetIndex < 0 ? targets.length : targetIndex);
+  };
+
   const startCategoryDrag = (event: ReactPointerEvent<HTMLButtonElement>, categoryId: string) => {
     if (savingOrder) return;
     event.preventDefault();
-    event.currentTarget.setPointerCapture(event.pointerId);
+    dragCleanupRef.current?.();
     draggingCategoryRef.current = categoryId;
     setDraggingCategory(categoryId);
-  };
-
-  const updateCategoryDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    const sourceId = draggingCategoryRef.current;
-    if (!sourceId) return;
-    const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>("[data-category-id]");
-    const targetId = target?.dataset.categoryId;
-    if (targetId) moveCategory(sourceId, targetId);
-  };
-
-  const finishCategoryDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    if (!draggingCategoryRef.current) return;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-    draggingCategoryRef.current = null;
-    setDraggingCategory(null);
-    void saveCategoryOrder();
+    const pointerId = event.pointerId;
+    const move = (pointerEvent: PointerEvent) => {
+      if (pointerEvent.pointerId !== pointerId) return;
+      pointerEvent.preventDefault();
+      updateCategoryDrag(categoryId, pointerEvent.clientX, pointerEvent.clientY);
+    };
+    const finish = (pointerEvent: PointerEvent) => {
+      if (pointerEvent.pointerId !== pointerId) return;
+      dragCleanupRef.current?.();
+      dragCleanupRef.current = null;
+      draggingCategoryRef.current = null;
+      setDraggingCategory(null);
+      void saveCategoryOrder();
+    };
+    const cleanup = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+    };
+    dragCleanupRef.current = cleanup;
+    window.addEventListener("pointermove", move, { passive: false });
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("pointercancel", finish);
   };
 
   const moveCategoryWithKeyboard = (event: ReactKeyboardEvent<HTMLButtonElement>, categoryId: string) => {
@@ -695,18 +722,24 @@ function PersonalizationPanel({ categories, onChanged }: { categories: LedgerCat
     if (event.key !== "ArrowUp" && event.key !== "ArrowLeft" && event.key !== "ArrowDown" && event.key !== "ArrowRight") return;
     event.preventDefault();
     const current = orderedCategoriesRef.current;
-    const index = current.findIndex((category) => category.id === categoryId);
-    const offset = event.key === "ArrowUp" || event.key === "ArrowLeft" ? -1 : 1;
-    const target = current[index + offset];
-    if (target) void saveCategoryOrder(moveCategory(categoryId, target.id));
+    const source = current.find((category) => category.id === categoryId);
+    if (!source) return;
+    const group = current.filter((category) => category.type === source.type);
+    const index = group.findIndex((category) => category.id === categoryId);
+    let next = current;
+    if (event.key === "ArrowUp" && index > 0) next = placeCategory(categoryId, source.type, index - 1);
+    if (event.key === "ArrowDown" && index < group.length - 1) next = placeCategory(categoryId, source.type, index + 1);
+    if (event.key === "ArrowLeft" && source.type === "income") next = placeCategory(categoryId, "expense", current.filter((category) => category.type === "expense").length);
+    if (event.key === "ArrowRight" && source.type === "expense") next = placeCategory(categoryId, "income", current.filter((category) => category.type === "income").length);
+    if (next !== current) void saveCategoryOrder(next);
   };
 
   const beginEdit = (category: LedgerCategory) => {
-    setEditing(category); setName(category.name); setEmoji(category.emoji); setError("");
+    setEditing(category); setName(category.name); setEmoji(category.emoji); setCategoryType(category.type); setError("");
   };
 
   const beginAdd = () => {
-    setEditing(null); setName(""); setEmoji("✨"); setError("");
+    setEditing(null); setName(""); setEmoji("✨"); setCategoryType("expense"); setError("");
   };
 
   const submit = async (event: FormEvent) => {
@@ -715,7 +748,7 @@ function PersonalizationPanel({ categories, onChanged }: { categories: LedgerCat
       const response = await fetch(editing ? `/api/categories?id=${encodeURIComponent(editing.id)}` : "/api/categories", {
         method: editing ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, emoji }),
+        body: JSON.stringify({ name, emoji, categoryType }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Could not save the category.");
@@ -738,16 +771,28 @@ function PersonalizationPanel({ categories, onChanged }: { categories: LedgerCat
     finally { setSaving(false); }
   };
 
+  const renderCategorySection = (type: CategoryType, title: string, description: string) => {
+    const group = orderedCategories.filter((category) => category.type === type);
+    return <section className="category-group">
+      <div className="category-group-heading"><div><strong>{title}</strong><span>{description}</span></div><em>{group.length}</em></div>
+      <div className="category-drop-zone" data-category-type={type}>
+        {group.map((category) => <div key={category.id} data-category-id={category.id} className={`category-library-item ${editing?.id === category.id ? "active" : ""} ${draggingCategory === category.id ? "dragging" : ""}`}><button type="button" className="category-edit-button" onClick={() => beginEdit(category)}><span>{category.emoji}</span><b>{category.name}</b><em>Edit</em></button><button type="button" className="category-drag-handle" aria-label={`Drag ${category.name} to reorder or move it between Expense and Income. Use arrow keys for the same actions.`} onPointerDown={(event) => startCategoryDrag(event, category.id)} onKeyDown={(event) => moveCategoryWithKeyboard(event, category.id)}>⠿</button></div>)}
+        {!group.length && <div className="category-drop-empty">Drag categories here</div>}
+      </div>
+    </section>;
+  };
+
   return <div className="personalization-grid">
     <section className="category-library-card">
       <div className="section-heading"><div><p>Quick selection</p><h2>Your categories</h2></div><span>{savingOrder ? "Saving order…" : `${categories.length} saved`}</span></div>
-      <p className="personalization-copy">Drag the handles to set the shortcut order used in Add Transaction and every category editor.</p>
-      <div className="category-library">{orderedCategories.map((category) => <div key={category.id} data-category-id={category.id} className={`category-library-item ${editing?.id === category.id ? "active" : ""} ${draggingCategory === category.id ? "dragging" : ""}`}><button type="button" className="category-edit-button" onClick={() => beginEdit(category)}><span>{category.emoji}</span><b>{category.name}</b><em>Edit</em></button><button type="button" className="category-drag-handle" aria-label={`Drag ${category.name} to reorder. Use arrow keys to move it.`} onPointerDown={(event) => startCategoryDrag(event, category.id)} onPointerMove={updateCategoryDrag} onPointerUp={finishCategoryDrag} onPointerCancel={finishCategoryDrag} onKeyDown={(event) => moveCategoryWithKeyboard(event, category.id)}>⠿</button></div>)}</div>
+      <p className="personalization-copy">Drag within a section to reorder, or drag across sections to change whether a category appears under Expense or Income.</p>
+      <div className="category-library">{renderCategorySection("expense", "Expense", "Spending categories")}{renderCategorySection("income", "Income", "Incoming money")}</div>
       {!categories.length && <div className="category-library-empty">No quick categories yet.</div>}
     </section>
     <section className="category-editor-card">
       <div className="section-heading"><div><p>Owner controls</p><h2>{editing ? "Edit category" : "Add category"}</h2></div>{editing && <button onClick={beginAdd}>Add new</button>}</div>
       <form onSubmit={submit}>
+        <div className="category-type-toggle" aria-label="Category type"><button type="button" className={categoryType === "expense" ? "active" : ""} onClick={() => setCategoryType("expense")}>Expense</button><button type="button" className={categoryType === "income" ? "active" : ""} onClick={() => setCategoryType("income")}>Income</button></div>
         <label className="field-label">Emoji<input className="emoji-input" value={emoji} onChange={(event) => setEmoji(event.target.value)} maxLength={8} placeholder="✨" required /></label>
         <label className="field-label">Category name<input value={name} onChange={(event) => setName(event.target.value)} maxLength={30} placeholder="e.g. Subscriptions" required /></label>
         <p className="category-editor-note">Renaming a category updates every matching past entry. Changing its emoji refreshes the category display throughout your ledger. Removing a shortcut does not delete entries.</p>
@@ -765,8 +810,8 @@ function NavItem({ active, icon, label, onClick }: { active: boolean; icon: stri
 function TransactionDrawer({ today, categories, onClose, onSaved }: { today: string; categories: LedgerCategory[]; onClose: () => void; onSaved: () => void }) {
   const [type, setType] = useState<"expense" | "income">("expense");
   const [amount, setAmount] = useState("");
-  const expenseCategories = useMemo(() => categories.filter((item) => item.name !== "Income"), [categories]);
-  const [category, setCategory] = useState(expenseCategories[0]?.name ?? "Other");
+  const availableCategories = useMemo(() => categories.filter((item) => item.type === type), [categories, type]);
+  const [category, setCategory] = useState(categories.find((item) => item.type === "expense")?.name ?? "Other");
   const [account, setAccount] = useState("Everyday");
   const [date, setDate] = useState(today);
   const [note, setNote] = useState("");
@@ -774,15 +819,15 @@ function TransactionDrawer({ today, categories, onClose, onSaved }: { today: str
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (type === "expense" && !expenseCategories.some((item) => item.name === category)) {
-      setCategory(expenseCategories[0]?.name ?? "Other");
+    if (!availableCategories.some((item) => item.name === category)) {
+      setCategory(availableCategories[0]?.name ?? "");
     }
-  }, [expenseCategories, type, category]);
+  }, [availableCategories, category]);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setSaving(true); setError("");
     try {
-      const response = await fetch("/api/transactions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date, type, amount: Number(amount), currency: "AUD", category: type === "income" ? "Income" : category, account, note, source: "manual" }) });
+      const response = await fetch("/api/transactions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date, type, amount: Number(amount), currency: "AUD", category, account, note, source: "manual" }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Could not save the transaction.");
       await onSaved();
@@ -794,13 +839,13 @@ function TransactionDrawer({ today, categories, onClose, onSaved }: { today: str
     <button className="drawer-backdrop" onClick={onClose} aria-label="Close" />
     <form className="transaction-drawer" onSubmit={submit}>
       <div className="drawer-header"><div><p>Quick entry</p><h2>What was this one?</h2></div><button type="button" onClick={onClose}>×</button></div>
-      <div className="type-toggle"><button type="button" className={type === "expense" ? "active" : ""} onClick={() => { setType("expense"); setCategory(expenseCategories[0]?.name ?? "Other"); }}>Expense</button><button type="button" className={type === "income" ? "active" : ""} onClick={() => { setType("income"); setCategory("Income"); }}>Income</button></div>
+      <div className="type-toggle"><button type="button" className={type === "expense" ? "active" : ""} onClick={() => setType("expense")}>Expense</button><button type="button" className={type === "income" ? "active" : ""} onClick={() => setType("income")}>Income</button></div>
       <label className="amount-field"><span>A$</span><input autoFocus inputMode="decimal" placeholder="0.00" value={amount} onChange={(event) => setAmount(event.target.value)} aria-label="Amount" required /></label>
       <label className="field-label">Note<AutoGrowingNoteInput placeholder={type === "expense" ? "e.g. Coles\n\nMilk - 3.50 AUD" : "e.g. Salary payment"} value={note} onChange={setNote} /></label>
-      {type === "expense" && <fieldset className="category-picker"><legend>Choose a category</legend><div>{expenseCategories.map((item) => <button type="button" key={item.id} className={category === item.name ? "active" : ""} onClick={() => setCategory(item.name)}><span>{item.emoji}</span>{item.name}</button>)}</div></fieldset>}
+      <fieldset className="category-picker"><legend>Choose a category</legend>{availableCategories.length ? <div>{availableCategories.map((item) => <button type="button" key={item.id} className={category === item.name ? "active" : ""} onClick={() => setCategory(item.name)}><span>{item.emoji}</span>{item.name}</button>)}</div> : <p className="category-picker-empty">No {type} categories yet. Move one into this section in Personalization.</p>}</fieldset>
       <div className="field-row"><label className="field-label">Account<select value={account} onChange={(event) => setAccount(event.target.value)}><option>Everyday</option><option>Credit</option><option>Savings</option><option>Cash</option></select></label><label className="field-label">Date<input type="date" value={date} max={today} onChange={(event) => setDate(event.target.value)} /></label></div>
       {error && <p className="form-error">{error}</p>}
-      <button className="save-button" disabled={saving}>{saving ? "Saving…" : "Save transaction"}</button>
+      <button className="save-button" disabled={saving || !availableCategories.length}>{saving ? "Saving…" : "Save transaction"}</button>
     </form>
   </div>;
 }
