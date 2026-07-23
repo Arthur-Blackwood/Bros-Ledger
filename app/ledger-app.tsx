@@ -23,6 +23,42 @@ type ExplorerType = "expense" | "income";
 type ExplorerGroup = "day" | "month" | "year";
 type CategoryPeriod = "month" | "quarter" | "year";
 
+type ReportChartPreferences = {
+  explorerType: ExplorerType;
+  explorerGroup: ExplorerGroup;
+  filterOutliers: boolean;
+  categoryPeriod: CategoryPeriod;
+  categoryFilterOutliers: boolean;
+  groupSmallCategories: boolean;
+};
+
+const reportChartPreferencesKey = "daylight-ledger:report-chart-preferences:v1";
+const defaultReportChartPreferences: ReportChartPreferences = {
+  explorerType: "expense",
+  explorerGroup: "day",
+  filterOutliers: false,
+  categoryPeriod: "month",
+  categoryFilterOutliers: false,
+  groupSmallCategories: true,
+};
+
+const readReportChartPreferences = (): ReportChartPreferences => {
+  if (typeof window === "undefined") return defaultReportChartPreferences;
+  try {
+    const value = JSON.parse(window.localStorage.getItem(reportChartPreferencesKey) ?? "{}") as Partial<ReportChartPreferences>;
+    return {
+      explorerType: value.explorerType === "income" ? "income" : "expense",
+      explorerGroup: value.explorerGroup === "month" || value.explorerGroup === "year" ? value.explorerGroup : "day",
+      filterOutliers: Boolean(value.filterOutliers),
+      categoryPeriod: value.categoryPeriod === "quarter" || value.categoryPeriod === "year" ? value.categoryPeriod : "month",
+      categoryFilterOutliers: Boolean(value.categoryFilterOutliers),
+      groupSmallCategories: typeof value.groupSmallCategories === "boolean" ? value.groupSmallCategories : true,
+    };
+  } catch {
+    return defaultReportChartPreferences;
+  }
+};
+
 const categoryMeta: Record<string, { emoji: string; color: string }> = {
   Food: { emoji: "🍜", color: "#c96745" },
   Transport: { emoji: "🚆", color: "#5f99aa" },
@@ -351,6 +387,34 @@ function ReportsPanel({ transactions, selectedDate, currency, categoryEmoji, can
   const [selectedActivityDate, setSelectedActivityDate] = useState<string | null>(null);
   const [selectedExplorerKey, setSelectedExplorerKey] = useState<string | null>(null);
   const [openInfo, setOpenInfo] = useState<"activity" | "outliers" | null>(null);
+  const [chartPreferencesReady, setChartPreferencesReady] = useState(false);
+
+  useEffect(() => {
+    const saved = readReportChartPreferences();
+    setExplorerType(saved.explorerType);
+    setExplorerGroup(saved.explorerGroup);
+    setFilterOutliers(saved.filterOutliers);
+    setCategoryPeriod(saved.categoryPeriod);
+    setCategoryFilterOutliers(saved.categoryFilterOutliers);
+    setGroupSmallCategories(saved.groupSmallCategories);
+    setChartPreferencesReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!chartPreferencesReady) return;
+    try {
+      window.localStorage.setItem(reportChartPreferencesKey, JSON.stringify({
+        explorerType,
+        explorerGroup,
+        filterOutliers,
+        categoryPeriod,
+        categoryFilterOutliers,
+        groupSmallCategories,
+      } satisfies ReportChartPreferences));
+    } catch {
+      // Preferences remain usable for the current visit when browser storage is unavailable.
+    }
+  }, [chartPreferencesReady, explorerType, explorerGroup, filterOutliers, categoryPeriod, categoryFilterOutliers, groupSmallCategories]);
 
   const categoryPeriodMeta = useMemo(() => {
     const end = selectedDate;
