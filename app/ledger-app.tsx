@@ -303,7 +303,7 @@ export function LedgerApp() {
         )}
 
         {view === "reports" && (
-          <ReportsPanel transactions={transactions} selectedDate={selectedDate} currency={currency} monthExpense={monthExpense} monthIncome={monthIncome} categoryTotals={categoryTotals} categoryEmoji={categoryEmoji} onShowTransactions={() => setView("transactions")} />
+          <ReportsPanel transactions={transactions} selectedDate={selectedDate} currency={currency} monthExpense={monthExpense} monthIncome={monthIncome} categoryTotals={categoryTotals} categoryEmoji={categoryEmoji} canEdit={canEdit} onShowTransactions={() => setView("transactions")} onEditTransaction={(transaction) => { setView("transactions"); setEditingTransaction(transaction); }} />
         )}
 
         {view === "transactions" && <TransactionsPanel groups={reportGroups} currency={currency} canEdit={canEdit} categoryEmoji={categoryEmoji} onEdit={setEditingTransaction} onExport={exportCsv} onAdd={() => setDrawerOpen(true)} />}
@@ -326,7 +326,7 @@ export function LedgerApp() {
   );
 }
 
-function ReportsPanel({ transactions, selectedDate, currency, monthExpense, monthIncome, categoryTotals, categoryEmoji, onShowTransactions }: {
+function ReportsPanel({ transactions, selectedDate, currency, monthExpense, monthIncome, categoryTotals, categoryEmoji, canEdit, onShowTransactions, onEditTransaction }: {
   transactions: Transaction[];
   selectedDate: string;
   currency: string;
@@ -334,7 +334,9 @@ function ReportsPanel({ transactions, selectedDate, currency, monthExpense, mont
   monthIncome: number;
   categoryTotals: [string, number][];
   categoryEmoji: (name: string) => string;
+  canEdit: boolean;
   onShowTransactions: () => void;
+  onEditTransaction: (transaction: Transaction) => void;
 }) {
   const [explorerType, setExplorerType] = useState<ExplorerType>("expense");
   const [explorerGroup, setExplorerGroup] = useState<ExplorerGroup>("day");
@@ -414,7 +416,7 @@ function ReportsPanel({ transactions, selectedDate, currency, monthExpense, mont
         })}
       </div>
       <div className="activity-legend"><span><i className="level-1" />Up to {money(activityMax * .25, currency)}</span><span><i className="level-2" />Up to {money(activityMax * .5, currency)}</span><span><i className="level-3" />Up to {money(activityMax * .75, currency)}</span><span><i className="level-4" />Above {money(activityMax * .75, currency)}</span></div>
-      {selectedActivityDate && <ReportDetailPanel title={longDate(selectedActivityDate)} subtitle="Expenditure activity" items={activityDetails} currency={currency} onClose={() => setSelectedActivityDate(null)} />}
+      {selectedActivityDate && <ReportDetailPanel title={longDate(selectedActivityDate)} subtitle="Expenditure activity" items={activityDetails} currency={currency} canEdit={canEdit} onEdit={onEditTransaction} onClose={() => setSelectedActivityDate(null)} />}
     </section>
 
     <section className="explorer-card analysis-card">
@@ -425,7 +427,7 @@ function ReportsPanel({ transactions, selectedDate, currency, monthExpense, mont
           <div className="trend-bars">{series.map((item) => <button type="button" className={`trend-bar-wrap ${selectedExplorerKey === item.key ? "selected" : ""}`} key={item.key} title={`${explorerLabel(item.key, explorerGroup)}: ${money(item.value, currency)}`} aria-label={`Show ${explorerType} details for ${explorerLabel(item.key, explorerGroup)}: ${money(item.value, currency)}`} aria-pressed={selectedExplorerKey === item.key} onClick={() => setSelectedExplorerKey((current) => current === item.key ? null : item.key)}><i style={{ height: `${Math.max(3, item.value / chartMax * 100)}%` }} /></button>)}</div>
           <div className="trend-x-labels">{tickIndexes.map((index) => <span key={series[index].key}>{explorerLabel(series[index].key, explorerGroup)}</span>)}</div>
         </div>
-        {selectedExplorerKey && series.some((item) => item.key === selectedExplorerKey) && <ReportDetailPanel title={explorerLabel(selectedExplorerKey, explorerGroup)} subtitle={explorerType === "expense" ? "Expenditure" : "Income"} items={explorerDetails} currency={currency} onClose={() => setSelectedExplorerKey(null)} />}
+        {selectedExplorerKey && series.some((item) => item.key === selectedExplorerKey) && <ReportDetailPanel title={explorerLabel(selectedExplorerKey, explorerGroup)} subtitle={explorerType === "expense" ? "Expenditure" : "Income"} items={explorerDetails} currency={currency} canEdit={canEdit} onEdit={onEditTransaction} onClose={() => setSelectedExplorerKey(null)} />}
         <div className="explorer-stats"><div><span>Highest</span><strong>{money(explorerHighest, currency)}</strong></div><div><span>Lowest</span><strong>{money(explorerLowest, currency)}</strong></div><div><span>Amplitude</span><strong>{money(explorerHighest - explorerLowest, currency)}</strong></div><div><span>Average</span><strong>{money(explorerAverage, currency)}</strong></div></div>
       </> : <div className="explorer-empty">No {explorerType} data for this selection.</div>}
       <div className="explorer-controls">
@@ -438,12 +440,12 @@ function ReportsPanel({ transactions, selectedDate, currency, monthExpense, mont
   </div>;
 }
 
-function ReportDetailPanel({ title, subtitle, items, currency, onClose }: { title: string; subtitle: string; items: Transaction[]; currency: string; onClose: () => void }) {
+function ReportDetailPanel({ title, subtitle, items, currency, canEdit, onEdit, onClose }: { title: string; subtitle: string; items: Transaction[]; currency: string; canEdit: boolean; onEdit: (transaction: Transaction) => void; onClose: () => void }) {
   return <section className="report-detail" aria-live="polite">
     <div className="report-detail-head"><div><p>{subtitle}</p><h3>{title}</h3></div><span>{items.length} {items.length === 1 ? "transaction" : "transactions"}</span><button onClick={onClose} aria-label="Close transaction details">×</button></div>
     {items.length ? <div className="report-detail-table">
-      <div className="report-detail-columns"><span>Date</span><span>Category</span><span>Note</span><span>Amount</span></div>
-      {items.map((item) => <div className="report-detail-row" key={item.id}><time dateTime={item.occurredAt}>{item.occurredAt}</time><span>{item.category}</span><strong>{displayNote(item.note)}</strong><b className={item.type}>{item.type === "income" ? "+" : "−"}{money(item.amountCents, item.currency || currency)}</b></div>)}
+      <div className="report-detail-columns"><span>Date</span><span>Category</span><span>Note</span><span>Amount</span><span>{canEdit ? "Action" : ""}</span></div>
+      {items.map((item) => <div className="report-detail-row" key={item.id}><time dateTime={item.occurredAt}>{item.occurredAt}</time><span>{item.category}</span><strong>{displayNote(item.note)}</strong><b className={item.type}>{item.type === "income" ? "+" : "−"}{money(item.amountCents, item.currency || currency)}</b>{canEdit ? <button className="report-detail-edit" onClick={() => onEdit(item)} aria-label={`Edit ${displayNote(item.note)}`}>Edit</button> : <span />}</div>)}
     </div> : <p className="report-detail-empty">No expenditure was recorded for this date.</p>}
   </section>;
 }
