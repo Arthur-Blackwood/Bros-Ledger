@@ -264,11 +264,11 @@ export function LedgerApp() {
         {view === "overview" && (
           <div className="dashboard-grid">
             <section className="balance-card">
-              <div className="balance-head"><span>Spent this month</span><button aria-label="Spending options">•••</button></div>
-              <strong>{money(monthExpense, currency)}</strong>
+              <div className="balance-head"><span>Net cash flow</span><button aria-label="Cash flow options">•••</button></div>
+              <strong>{money(monthIncome - monthExpense, currency, true)}</strong>
               <div className="balance-meta">
                 <div><span className="legend-dot income" />Income this month <b>{money(monthIncome, currency)}</b></div>
-                <div><span className="legend-dot expense" />Net cash flow <b>{money(monthIncome - monthExpense, currency, true)}</b></div>
+                <div><span className="legend-dot expense" />Spent this month <b>{money(monthExpense, currency)}</b></div>
               </div>
               <div className="balance-art" aria-hidden="true"><i /><i /><i /></div>
             </section>
