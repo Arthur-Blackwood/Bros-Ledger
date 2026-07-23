@@ -340,6 +340,8 @@ function ReportsPanel({ transactions, selectedDate, currency, monthExpense, mont
   const [explorerGroup, setExplorerGroup] = useState<ExplorerGroup>("day");
   const [filterOutliers, setFilterOutliers] = useState(false);
   const [shareStatus, setShareStatus] = useState("");
+  const [selectedActivityDate, setSelectedActivityDate] = useState<string | null>(null);
+  const [selectedExplorerKey, setSelectedExplorerKey] = useState<string | null>(null);
 
   const activity = useMemo(() => {
     const daily = new Map<string, number>();
@@ -378,6 +380,8 @@ function ReportsPanel({ transactions, selectedDate, currency, monthExpense, mont
   const explorerAverage = explorerValues.length ? Math.round(explorerTotal / explorerValues.length) : 0;
   const chartMax = Math.max(explorerHighest, 1);
   const tickIndexes = Array.from(new Set([0, Math.floor((series.length - 1) / 3), Math.floor((series.length - 1) * 2 / 3), series.length - 1])).filter((index) => index >= 0);
+  const activityDetails = selectedActivityDate ? transactions.filter((item) => item.type === "expense" && item.occurredAt === selectedActivityDate) : [];
+  const explorerDetails = selectedExplorerKey ? transactions.filter((item) => item.type === explorerType && explorerKey(item.occurredAt, explorerGroup) === selectedExplorerKey) : [];
 
   const shareExplorer = async () => {
     const text = `${explorerType === "expense" ? "Expenditure" : "Income"} total: ${money(explorerTotal, currency)}. Highest ${money(explorerHighest, currency)}, lowest ${money(explorerLowest, currency)}, average ${money(explorerAverage, currency)}.`;
@@ -406,10 +410,11 @@ function ReportsPanel({ transactions, selectedDate, currency, monthExpense, mont
       <div className="activity-grid" aria-label="Daily expenditure over the last 16 weeks">
         {activity.map((item) => {
           const level = item.value === 0 ? 0 : item.value <= activityMax * .25 ? 1 : item.value <= activityMax * .5 ? 2 : item.value <= activityMax * .75 ? 3 : 4;
-          return <span key={item.date} className={`activity-cell level-${level}`} title={`${longDate(item.date)}: ${money(item.value, currency)}`} aria-label={`${item.date}: ${money(item.value, currency)}`} />;
+          return <button key={item.date} type="button" className={`activity-cell level-${level} ${selectedActivityDate === item.date ? "selected" : ""}`} title={`${longDate(item.date)}: ${money(item.value, currency)}`} aria-label={`Show expenditure for ${item.date}: ${money(item.value, currency)}`} aria-pressed={selectedActivityDate === item.date} onClick={() => setSelectedActivityDate((current) => current === item.date ? null : item.date)} />;
         })}
       </div>
       <div className="activity-legend"><span><i className="level-1" />Up to {money(activityMax * .25, currency)}</span><span><i className="level-2" />Up to {money(activityMax * .5, currency)}</span><span><i className="level-3" />Up to {money(activityMax * .75, currency)}</span><span><i className="level-4" />Above {money(activityMax * .75, currency)}</span></div>
+      {selectedActivityDate && <ReportDetailPanel title={longDate(selectedActivityDate)} subtitle="Expenditure activity" items={activityDetails} currency={currency} onClose={() => setSelectedActivityDate(null)} />}
     </section>
 
     <section className="explorer-card analysis-card">
@@ -417,19 +422,30 @@ function ReportsPanel({ transactions, selectedDate, currency, monthExpense, mont
       {series.length ? <>
         <div className="trend-chart" aria-label={`${explorerType} grouped by ${explorerGroup}`}>
           <div className="trend-y-labels"><span>{money(chartMax, currency)}</span><span>{money(chartMax / 2, currency)}</span><span>{money(0, currency)}</span></div>
-          <div className="trend-bars">{series.map((item) => <div className="trend-bar-wrap" key={item.key} title={`${explorerLabel(item.key, explorerGroup)}: ${money(item.value, currency)}`}><i style={{ height: `${Math.max(3, item.value / chartMax * 100)}%` }} /></div>)}</div>
+          <div className="trend-bars">{series.map((item) => <button type="button" className={`trend-bar-wrap ${selectedExplorerKey === item.key ? "selected" : ""}`} key={item.key} title={`${explorerLabel(item.key, explorerGroup)}: ${money(item.value, currency)}`} aria-label={`Show ${explorerType} details for ${explorerLabel(item.key, explorerGroup)}: ${money(item.value, currency)}`} aria-pressed={selectedExplorerKey === item.key} onClick={() => setSelectedExplorerKey((current) => current === item.key ? null : item.key)}><i style={{ height: `${Math.max(3, item.value / chartMax * 100)}%` }} /></button>)}</div>
           <div className="trend-x-labels">{tickIndexes.map((index) => <span key={series[index].key}>{explorerLabel(series[index].key, explorerGroup)}</span>)}</div>
         </div>
+        {selectedExplorerKey && series.some((item) => item.key === selectedExplorerKey) && <ReportDetailPanel title={explorerLabel(selectedExplorerKey, explorerGroup)} subtitle={explorerType === "expense" ? "Expenditure" : "Income"} items={explorerDetails} currency={currency} onClose={() => setSelectedExplorerKey(null)} />}
         <div className="explorer-stats"><div><span>Highest</span><strong>{money(explorerHighest, currency)}</strong></div><div><span>Lowest</span><strong>{money(explorerLowest, currency)}</strong></div><div><span>Amplitude</span><strong>{money(explorerHighest - explorerLowest, currency)}</strong></div><div><span>Average</span><strong>{money(explorerAverage, currency)}</strong></div></div>
       </> : <div className="explorer-empty">No {explorerType} data for this selection.</div>}
       <div className="explorer-controls">
-        <div><span>Transaction type</span><div className="segmented-control"><button className={explorerType === "expense" ? "active" : ""} onClick={() => setExplorerType("expense")}>Expenditure</button><button className={explorerType === "income" ? "active" : ""} onClick={() => setExplorerType("income")}>Income</button></div></div>
-        <div><span>Group by</span><div className="segmented-control group-control">{(["day", "month", "year"] as ExplorerGroup[]).map((group) => <button key={group} className={explorerGroup === group ? "active" : ""} onClick={() => setExplorerGroup(group)}>{group[0].toUpperCase() + group.slice(1)}</button>)}</div></div>
-        <div><span>Filter outliers <button className="help-inline" title="Uses the standard 1.5× interquartile range rule." aria-label="About outlier filtering">?</button></span><button className={`outlier-toggle ${filterOutliers ? "active" : ""}`} onClick={() => setFilterOutliers((value) => !value)} aria-pressed={filterOutliers}>{filterOutliers ? "Filtering" : "Include all"}</button></div>
+        <div><span>Transaction type</span><div className="segmented-control"><button className={explorerType === "expense" ? "active" : ""} onClick={() => { setExplorerType("expense"); setSelectedExplorerKey(null); }}>Expenditure</button><button className={explorerType === "income" ? "active" : ""} onClick={() => { setExplorerType("income"); setSelectedExplorerKey(null); }}>Income</button></div></div>
+        <div><span>Group by</span><div className="segmented-control group-control">{(["day", "month", "year"] as ExplorerGroup[]).map((group) => <button key={group} className={explorerGroup === group ? "active" : ""} onClick={() => { setExplorerGroup(group); setSelectedExplorerKey(null); }}>{group[0].toUpperCase() + group.slice(1)}</button>)}</div></div>
+        <div><span>Filter outliers <button className="help-inline" title="Uses the standard 1.5× interquartile range rule." aria-label="About outlier filtering">?</button></span><button className={`outlier-toggle ${filterOutliers ? "active" : ""}`} onClick={() => { setFilterOutliers((value) => !value); setSelectedExplorerKey(null); }} aria-pressed={filterOutliers}>{filterOutliers ? "Filtering" : "Include all"}</button></div>
       </div>
       <button className="show-transactions" onClick={onShowTransactions}><span>Show all transactions</span><b>{transactions.length}</b></button>
     </section>
   </div>;
+}
+
+function ReportDetailPanel({ title, subtitle, items, currency, onClose }: { title: string; subtitle: string; items: Transaction[]; currency: string; onClose: () => void }) {
+  return <section className="report-detail" aria-live="polite">
+    <div className="report-detail-head"><div><p>{subtitle}</p><h3>{title}</h3></div><span>{items.length} {items.length === 1 ? "transaction" : "transactions"}</span><button onClick={onClose} aria-label="Close transaction details">×</button></div>
+    {items.length ? <div className="report-detail-table">
+      <div className="report-detail-columns"><span>Date</span><span>Category</span><span>Note</span><span>Amount</span></div>
+      {items.map((item) => <div className="report-detail-row" key={item.id}><time dateTime={item.occurredAt}>{item.occurredAt}</time><span>{item.category}</span><strong>{displayNote(item.note)}</strong><b className={item.type}>{item.type === "income" ? "+" : "−"}{money(item.amountCents, item.currency || currency)}</b></div>)}
+    </div> : <p className="report-detail-empty">No expenditure was recorded for this date.</p>}
+  </section>;
 }
 
 function TransactionsPanel({ groups, currency, canEdit, categoryEmoji, onEdit, onExport, onAdd }: {
