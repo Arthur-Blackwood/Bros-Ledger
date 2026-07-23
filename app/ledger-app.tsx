@@ -20,6 +20,7 @@ type View = "overview" | "reports" | "transactions" | "personalization";
 type LedgerRole = "owner" | "family";
 type ExplorerType = "expense" | "income";
 type ExplorerGroup = "day" | "month" | "year";
+type CategoryPeriod = "month" | "quarter" | "year";
 
 const categoryMeta: Record<string, { emoji: string; color: string }> = {
   Food: { emoji: "🍜", color: "#c96745" },
@@ -303,7 +304,7 @@ export function LedgerApp() {
         )}
 
         {view === "reports" && (
-          <ReportsPanel transactions={transactions} selectedDate={selectedDate} currency={currency} monthExpense={monthExpense} monthIncome={monthIncome} categoryTotals={categoryTotals} categoryEmoji={categoryEmoji} canEdit={canEdit} onShowTransactions={() => setView("transactions")} onEditTransaction={(transaction) => { setView("transactions"); setEditingTransaction(transaction); }} />
+          <ReportsPanel transactions={transactions} selectedDate={selectedDate} currency={currency} categoryEmoji={categoryEmoji} canEdit={canEdit} onShowTransactions={() => setView("transactions")} onEditTransaction={(transaction) => { setView("transactions"); setEditingTransaction(transaction); }} />
         )}
 
         {view === "transactions" && <TransactionsPanel groups={reportGroups} currency={currency} canEdit={canEdit} categoryEmoji={categoryEmoji} onEdit={setEditingTransaction} onExport={exportCsv} onAdd={() => setDrawerOpen(true)} />}
@@ -326,13 +327,10 @@ export function LedgerApp() {
   );
 }
 
-function ReportsPanel({ transactions, selectedDate, currency, monthExpense, monthIncome, categoryTotals, categoryEmoji, canEdit, onShowTransactions, onEditTransaction }: {
+function ReportsPanel({ transactions, selectedDate, currency, categoryEmoji, canEdit, onShowTransactions, onEditTransaction }: {
   transactions: Transaction[];
   selectedDate: string;
   currency: string;
-  monthExpense: number;
-  monthIncome: number;
-  categoryTotals: [string, number][];
   categoryEmoji: (name: string) => string;
   canEdit: boolean;
   onShowTransactions: () => void;
@@ -341,10 +339,65 @@ function ReportsPanel({ transactions, selectedDate, currency, monthExpense, mont
   const [explorerType, setExplorerType] = useState<ExplorerType>("expense");
   const [explorerGroup, setExplorerGroup] = useState<ExplorerGroup>("day");
   const [filterOutliers, setFilterOutliers] = useState(false);
+  const [categoryPeriod, setCategoryPeriod] = useState<CategoryPeriod>("month");
+  const [categoryFilterOutliers, setCategoryFilterOutliers] = useState(false);
+  const [groupSmallCategories, setGroupSmallCategories] = useState(true);
   const [shareStatus, setShareStatus] = useState("");
   const [selectedActivityDate, setSelectedActivityDate] = useState<string | null>(null);
   const [selectedExplorerKey, setSelectedExplorerKey] = useState<string | null>(null);
   const [openInfo, setOpenInfo] = useState<"activity" | "outliers" | null>(null);
+
+  const categoryPeriodMeta = useMemo(() => {
+    const end = selectedDate;
+    const anchor = new Date(`${selectedDate}T12:00:00`);
+    const startDate = categoryPeriod === "month"
+      ? new Date(anchor.getFullYear(), anchor.getMonth(), 1, 12)
+      : categoryPeriod === "quarter"
+        ? new Date(anchor.getFullYear(), anchor.getMonth() - 2, 1, 12)
+        : new Date(anchor.getFullYear(), 0, 1, 12);
+    return {
+      start: toDateKey(startDate),
+      end,
+      label: categoryPeriod === "month" ? "This month" : categoryPeriod === "quarter" ? "Last 3 months" : "This year",
+    };
+  }, [categoryPeriod, selectedDate]);
+
+  const categorySourceTransactions = useMemo(() => transactions.filter((item) => item.type === "expense" && item.occurredAt >= categoryPeriodMeta.start && item.occurredAt <= categoryPeriodMeta.end), [transactions, categoryPeriodMeta]);
+  const categoryTransactions = useMemo(() => {
+    if (!categoryFilterOutliers || categorySourceTransactions.length < 4) return categorySourceTransactions;
+    const values = categorySourceTransactions.map((item) => item.amountCents);
+    const q1 = quartile(values, .25);
+    const q3 = quartile(values, .75);
+    const spread = q3 - q1;
+    const lower = Math.max(0, q1 - 1.5 * spread);
+    const upper = q3 + 1.5 * spread;
+    return categorySourceTransactions.filter((item) => item.amountCents >= lower && item.amountCents <= upper);
+  }, [categorySourceTransactions, categoryFilterOutliers]);
+
+  const categoryTotals = useMemo(() => {
+    const totals = new Map<string, number>();
+    categoryTransactions.forEach((item) => totals.set(item.category, (totals.get(item.category) ?? 0) + item.amountCents));
+    const sorted = Array.from(totals.entries()).sort((left, right) => right[1] - left[1]);
+    const total = sorted.reduce((sum, [, value]) => sum + value, 0);
+    const visible: [string, number][] = [];
+    let otherTotal = 0;
+
+    sorted.forEach(([name, value], index) => {
+      const isSmall = groupSmallCategories && total > 0 && value / total < .03;
+      const exceedsChartLimit = index >= 5;
+      if (isSmall || exceedsChartLimit) otherTotal += value;
+      else visible.push([name, value]);
+    });
+
+    if (otherTotal) {
+      const existingOther = visible.find((entry) => entry[0] === "Other");
+      if (existingOther) existingOther[1] += otherTotal;
+      else visible.push(["Other", otherTotal]);
+    }
+    return visible.sort((left, right) => right[1] - left[1]);
+  }, [categoryTransactions, groupSmallCategories]);
+  const categoryTotal = categoryTotals.reduce((sum, [, value]) => sum + value, 0);
+  const excludedCategoryTransactions = categorySourceTransactions.length - categoryTransactions.length;
 
   const activity = useMemo(() => {
     const daily = new Map<string, number>();
@@ -395,16 +448,20 @@ function ReportsPanel({ transactions, selectedDate, currency, monthExpense, mont
   };
 
   return <div className="reports-grid">
-    <section className="report-summary">
-      <p className="eyebrow">{new Intl.DateTimeFormat("en-AU", { month: "long", year: "numeric" }).format(new Date(`${selectedDate}T12:00:00`))}</p>
-      <h2>Spent this month<br /><strong>{money(monthExpense, currency)}</strong></h2>
-      <div className="report-badges"><span>Income {money(monthIncome, currency)}</span><span>Net {money(monthIncome - monthExpense, currency, true)}</span></div>
+    <section className="category-controls-card">
+      <div className="section-heading"><div><p>Chart controls</p><h2>Category view</h2></div><button type="button" className="category-reset" onClick={() => { setCategoryPeriod("month"); setCategoryFilterOutliers(false); setGroupSmallCategories(true); }}>Reset</button></div>
+      <div className="category-controls">
+        <div className="category-period-control"><span>Period</span><div className="segmented-control category-period-options">{(["month", "quarter", "year"] as CategoryPeriod[]).map((period) => <button type="button" key={period} className={categoryPeriod === period ? "active" : ""} onClick={() => setCategoryPeriod(period)}>{period === "month" ? "Month" : period === "quarter" ? "3 months" : "Year"}</button>)}</div></div>
+        <div className="category-control-row"><div><strong>Filter outliers</strong><span>Exclude unusually large or small transactions</span></div><button type="button" className={`compact-toggle ${categoryFilterOutliers ? "active" : ""}`} onClick={() => setCategoryFilterOutliers((value) => !value)} aria-pressed={categoryFilterOutliers}>{categoryFilterOutliers ? "On" : "Off"}</button></div>
+        <div className="category-control-row"><div><strong>Group small categories</strong><span>Combine categories below 3% into Other</span></div><button type="button" className={`compact-toggle ${groupSmallCategories ? "active" : ""}`} onClick={() => setGroupSmallCategories((value) => !value)} aria-pressed={groupSmallCategories}>{groupSmallCategories ? "On" : "Off"}</button></div>
+      </div>
+      <div className="category-control-summary"><div><span>{categoryPeriodMeta.label}</span><strong>{money(categoryTotal, currency)}</strong></div><div><span>Transactions included</span><strong>{categoryTransactions.length}</strong></div>{categoryFilterOutliers && <div><span>Outliers excluded</span><strong>{excludedCategoryTransactions}</strong></div>}</div>
     </section>
     <section className="category-card">
-      <div className="section-heading"><div><p>Life in numbers</p><h2>Spending by category</h2></div><span>{categoryTotals.length} categories</span></div>
+      <div className="section-heading"><div><p>{categoryPeriodMeta.label}</p><h2>Spending by category</h2></div><span>{categoryTotals.length} categories shown</span></div>
       <div className="category-visual">
         <div className="donut" style={{ background: buildDonut(categoryTotals) }}><div><strong>{categoryTotals[0]?.[0] ?? "None yet"}</strong><span>Top spend</span></div></div>
-        <div className="category-list">{categoryTotals.length ? categoryTotals.slice(0, 5).map(([name, value]) => <div key={name}><span className="category-swatch" style={{ background: categoryMeta[name]?.color ?? categoryMeta.Other.color }} /> <b>{categoryEmoji(name)} {name}</b><span>{money(value, currency)} · {monthExpense ? Math.round(value / monthExpense * 100) : 0}%</span></div>) : <p>Your spending mix will appear after a few entries.</p>}</div>
+        <div className="category-list">{categoryTotals.length ? categoryTotals.map(([name, value]) => <div key={name}><span className="category-swatch" style={{ background: categoryMeta[name]?.color ?? categoryMeta.Other.color }} /> <b>{categoryEmoji(name)} {name}</b><span>{money(value, currency)} · {categoryTotal ? Math.round(value / categoryTotal * 100) : 0}%</span></div>) : <p>No spending matches these chart settings.</p>}</div>
       </div>
     </section>
 
