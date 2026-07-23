@@ -16,8 +16,10 @@ type Transaction = {
 };
 
 type LedgerCategory = { id: string; name: string; emoji: string };
-type View = "overview" | "reports" | "personalization";
+type View = "overview" | "reports" | "transactions" | "personalization";
 type LedgerRole = "owner" | "family";
+type ExplorerType = "expense" | "income";
+type ExplorerGroup = "day" | "month" | "year";
 
 const categoryMeta: Record<string, { emoji: string; color: string }> = {
   Food: { emoji: "🍜", color: "#c96745" },
@@ -53,6 +55,23 @@ const displayNote = (note: string, fallback = "No note") => note.split(/\r?\n/, 
 const longDate = (dateKey: string) => new Intl.DateTimeFormat("en-AU", {
   month: "long", day: "numeric", weekday: "short",
 }).format(new Date(`${dateKey}T12:00:00`));
+
+const explorerKey = (dateKey: string, group: ExplorerGroup) => group === "day" ? dateKey : group === "month" ? dateKey.slice(0, 7) : dateKey.slice(0, 4);
+
+const explorerLabel = (key: string, group: ExplorerGroup) => {
+  if (group === "year") return key;
+  if (group === "month") return new Intl.DateTimeFormat("en-AU", { month: "short", year: "2-digit" }).format(new Date(`${key}-01T12:00:00`));
+  return new Intl.DateTimeFormat("en-AU", { day: "numeric", month: "short" }).format(new Date(`${key}T12:00:00`));
+};
+
+const quartile = (values: number[], ratio: number) => {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const position = (sorted.length - 1) * ratio;
+  const lower = Math.floor(position);
+  const fraction = position - lower;
+  return sorted[lower] + (sorted[lower + 1] !== undefined ? fraction * (sorted[lower + 1] - sorted[lower]) : 0);
+};
 
 export function LedgerApp() {
   const today = useMemo(() => toDateKey(), []);
@@ -215,6 +234,7 @@ export function LedgerApp() {
         <nav className="main-nav" aria-label="Main navigation">
           <NavItem active={view === "overview"} icon="⌂" label="Today" onClick={() => setView("overview")} />
           <NavItem active={view === "reports"} icon="↗" label="Reports" onClick={() => setView("reports")} />
+          <NavItem active={view === "transactions"} icon="≡" label="Transactions" onClick={() => setView("transactions")} />
           {canEdit && <NavItem active={view === "personalization"} icon="✎" label="Personalization" onClick={() => setView("personalization")} />}
         </nav>
         <div className="sidebar-foot">
@@ -227,8 +247,8 @@ export function LedgerApp() {
       <section className="workspace">
         <header className="topbar">
           <div>
-            <p className="eyebrow">{view === "overview" ? "Today under southern skies" : view === "reports" ? "Spending insights" : "Make it yours"}</p>
-            <h1>{view === "overview" ? "Money, in a clearer light." : view === "reports" ? "Where did the money go?" : "Your quickest categories."}</h1>
+            <p className="eyebrow">{view === "overview" ? "Today under southern skies" : view === "reports" ? "Spending insights" : view === "transactions" ? "Detailed ledger" : "Make it yours"}</p>
+            <h1>{view === "overview" ? "Money, in a clearer light." : view === "reports" ? "Where did the money go?" : view === "transactions" ? "Every entry, in one place." : "Your quickest categories."}</h1>
           </div>
           <div className="topbar-actions"><span className={`access-badge ${canEdit ? "owner" : "family"}`}>{canEdit ? "Owner" : "Family · View only"}</span>{canEdit && view === "reports" && <button className="personalize-shortcut" onClick={() => setView("personalization")}>Personalize</button>}{canEdit && <button className="add-button" onClick={() => setDrawerOpen(true)}><span>＋</span> Add transaction</button>}</div>
         </header>
@@ -283,42 +303,10 @@ export function LedgerApp() {
         )}
 
         {view === "reports" && (
-          <div className="reports-grid">
-            <section className="report-summary">
-              <p className="eyebrow">{new Intl.DateTimeFormat("en-AU", { month: "long", year: "numeric" }).format(new Date(`${selectedDate}T12:00:00`))}</p>
-              <h2>Spent this month<br /><strong>{money(monthExpense, currency)}</strong></h2>
-              <div className="report-badges"><span>Income {money(monthIncome, currency)}</span><span>Net {money(monthIncome - monthExpense, currency, true)}</span></div>
-            </section>
-            <section className="category-card">
-              <div className="section-heading"><div><p>Life in numbers</p><h2>Spending by category</h2></div><span>{categoryTotals.length} categories</span></div>
-              <div className="category-visual">
-                <div className="donut" style={{ background: buildDonut(categoryTotals) }}><div><strong>{categoryTotals[0]?.[0] ?? "None yet"}</strong><span>Top spend</span></div></div>
-                <div className="category-list">{categoryTotals.length ? categoryTotals.slice(0, 5).map(([name, value]) => <div key={name}><span className="category-swatch" style={{ background: categoryMeta[name]?.color ?? categoryMeta.Other.color }} /> <b>{categoryEmoji(name)} {name}</b><span>{money(value, currency)} · {monthExpense ? Math.round(value / monthExpense * 100) : 0}%</span></div>) : <p>Your spending mix will appear after a few entries.</p>}</div>
-              </div>
-            </section>
-            <section className="report-table-card entry-ledger-card">
-              <div className="ledger-toolbar">
-                <div><p>Detailed ledger</p><h2>All entries</h2><span>Category, Note, Amount</span></div>
-                <button className="csv-button" onClick={exportCsv} disabled={!transactions.length}>⇩ Export CSV</button>
-              </div>
-              {reportGroups.length ? <div className="ledger-table-scroll"><div className="entry-ledger">
-                <div className="ledger-column-head"><span>Category</span><span>Note</span><span>Amount</span><span aria-hidden="true" /></div>
-                {reportGroups.map(([date, items]) => {
-                  const dayNet = items.reduce((sum, item) => sum + (item.type === "income" ? item.amountCents : -item.amountCents), 0);
-                  return <section className="ledger-day" key={date}>
-                    <div className="ledger-day-head"><strong>{longDate(date)}</strong><span>{items.length} {items.length === 1 ? "entry" : "entries"}</span><b>{money(dayNet, items[0]?.currency ?? currency, true)}</b></div>
-                    {items.map((item) => <button className="ledger-entry-row" key={item.id} onClick={() => canEdit && setEditingTransaction(item)} disabled={!canEdit} aria-label={canEdit ? `Edit ${displayNote(item.note)}` : `${item.category}, ${displayNote(item.note)}, view only`}>
-                      <span className="ledger-category"><i style={{ background: `${categoryMeta[item.category]?.color ?? categoryMeta.Other.color}30` }}>{categoryEmoji(item.category)}</i><b>{item.category}</b></span>
-                      <span className="ledger-note">{displayNote(item.note)}</span>
-                      <strong className={item.type}>{item.type === "income" ? "+" : "−"}{money(item.amountCents, item.currency)}</strong>
-                      <span className="ledger-edit">{canEdit ? "Edit" : "View"}</span>
-                    </button>)}
-                  </section>;
-                })}
-              </div></div> : <div className="ledger-empty"><span>🌿</span><h3>No entries yet</h3><p>{canEdit ? "Add a transaction and it will appear here." : "There are no entries to display."}</p>{canEdit && <button onClick={() => setDrawerOpen(true)}>Add transaction</button>}</div>}
-            </section>
-          </div>
+          <ReportsPanel transactions={transactions} selectedDate={selectedDate} currency={currency} monthExpense={monthExpense} monthIncome={monthIncome} categoryTotals={categoryTotals} categoryEmoji={categoryEmoji} onShowTransactions={() => setView("transactions")} />
         )}
+
+        {view === "transactions" && <TransactionsPanel groups={reportGroups} currency={currency} canEdit={canEdit} categoryEmoji={categoryEmoji} onEdit={setEditingTransaction} onExport={exportCsv} onAdd={() => setDrawerOpen(true)} />}
 
         {view === "personalization" && canEdit && <PersonalizationPanel categories={categories} onChanged={loadCategories} />}
 
@@ -328,6 +316,7 @@ export function LedgerApp() {
         <NavItem active={view === "overview"} icon="⌂" label="Today" onClick={() => setView("overview")} />
         <NavItem active={view === "reports"} icon="↗" label="Reports" onClick={() => setView("reports")} />
         {canEdit ? <button className="mobile-add" onClick={() => setDrawerOpen(true)} aria-label="Add transaction">＋</button> : <button className="mobile-readonly" disabled aria-label="View-only access">◉</button>}
+        <NavItem active={view === "transactions"} icon="≡" label="Transactions" onClick={() => setView("transactions")} />
         <button onClick={logout}><span>↪</span><em>Log out</em></button>
       </nav>
 
@@ -335,6 +324,147 @@ export function LedgerApp() {
       {canEdit && editingTransaction && <EditTransactionDrawer transaction={editingTransaction} categories={categories} onClose={() => setEditingTransaction(null)} onSaved={async () => { setEditingTransaction(null); await loadTransactions(); setNotice("Entry updated."); }} onDeleted={async () => { setEditingTransaction(null); await loadTransactions(); setNotice("Entry deleted."); }} />}
     </main>
   );
+}
+
+function ReportsPanel({ transactions, selectedDate, currency, monthExpense, monthIncome, categoryTotals, categoryEmoji, onShowTransactions }: {
+  transactions: Transaction[];
+  selectedDate: string;
+  currency: string;
+  monthExpense: number;
+  monthIncome: number;
+  categoryTotals: [string, number][];
+  categoryEmoji: (name: string) => string;
+  onShowTransactions: () => void;
+}) {
+  const [explorerType, setExplorerType] = useState<ExplorerType>("expense");
+  const [explorerGroup, setExplorerGroup] = useState<ExplorerGroup>("day");
+  const [filterOutliers, setFilterOutliers] = useState(false);
+  const [shareStatus, setShareStatus] = useState("");
+
+  const activity = useMemo(() => {
+    const daily = new Map<string, number>();
+    transactions.filter((item) => item.type === "expense").forEach((item) => daily.set(item.occurredAt, (daily.get(item.occurredAt) ?? 0) + item.amountCents));
+    return Array.from({ length: 112 }, (_, index) => {
+      const date = dateShift(selectedDate, index - 111);
+      return { date, value: daily.get(date) ?? 0 };
+    });
+  }, [transactions, selectedDate]);
+  const activityMax = Math.max(...activity.map((item) => item.value), 1);
+
+  const rawSeries = useMemo(() => {
+    const grouped = new Map<string, number>();
+    transactions.filter((item) => item.type === explorerType).forEach((item) => {
+      const key = explorerKey(item.occurredAt, explorerGroup);
+      grouped.set(key, (grouped.get(key) ?? 0) + item.amountCents);
+    });
+    return Array.from(grouped.entries()).sort(([left], [right]) => left.localeCompare(right)).map(([key, value]) => ({ key, value }));
+  }, [transactions, explorerType, explorerGroup]);
+
+  const series = useMemo(() => {
+    if (!filterOutliers || rawSeries.length < 4) return rawSeries;
+    const values = rawSeries.map((item) => item.value);
+    const q1 = quartile(values, .25);
+    const q3 = quartile(values, .75);
+    const spread = q3 - q1;
+    const lower = Math.max(0, q1 - 1.5 * spread);
+    const upper = q3 + 1.5 * spread;
+    return rawSeries.filter((item) => item.value >= lower && item.value <= upper);
+  }, [rawSeries, filterOutliers]);
+
+  const explorerValues = series.map((item) => item.value);
+  const explorerTotal = explorerValues.reduce((sum, value) => sum + value, 0);
+  const explorerHighest = explorerValues.length ? Math.max(...explorerValues) : 0;
+  const explorerLowest = explorerValues.length ? Math.min(...explorerValues) : 0;
+  const explorerAverage = explorerValues.length ? Math.round(explorerTotal / explorerValues.length) : 0;
+  const chartMax = Math.max(explorerHighest, 1);
+  const tickIndexes = Array.from(new Set([0, Math.floor((series.length - 1) / 3), Math.floor((series.length - 1) * 2 / 3), series.length - 1])).filter((index) => index >= 0);
+
+  const shareExplorer = async () => {
+    const text = `${explorerType === "expense" ? "Expenditure" : "Income"} total: ${money(explorerTotal, currency)}. Highest ${money(explorerHighest, currency)}, lowest ${money(explorerLowest, currency)}, average ${money(explorerAverage, currency)}.`;
+    if (navigator.share) await navigator.share({ title: "Daylight Ledger report", text });
+    else await navigator.clipboard.writeText(text);
+    setShareStatus(navigator.share ? "Shared" : "Copied");
+    window.setTimeout(() => setShareStatus(""), 1800);
+  };
+
+  return <div className="reports-grid">
+    <section className="report-summary">
+      <p className="eyebrow">{new Intl.DateTimeFormat("en-AU", { month: "long", year: "numeric" }).format(new Date(`${selectedDate}T12:00:00`))}</p>
+      <h2>Spent this month<br /><strong>{money(monthExpense, currency)}</strong></h2>
+      <div className="report-badges"><span>Income {money(monthIncome, currency)}</span><span>Net {money(monthIncome - monthExpense, currency, true)}</span></div>
+    </section>
+    <section className="category-card">
+      <div className="section-heading"><div><p>Life in numbers</p><h2>Spending by category</h2></div><span>{categoryTotals.length} categories</span></div>
+      <div className="category-visual">
+        <div className="donut" style={{ background: buildDonut(categoryTotals) }}><div><strong>{categoryTotals[0]?.[0] ?? "None yet"}</strong><span>Top spend</span></div></div>
+        <div className="category-list">{categoryTotals.length ? categoryTotals.slice(0, 5).map(([name, value]) => <div key={name}><span className="category-swatch" style={{ background: categoryMeta[name]?.color ?? categoryMeta.Other.color }} /> <b>{categoryEmoji(name)} {name}</b><span>{money(value, currency)} · {monthExpense ? Math.round(value / monthExpense * 100) : 0}%</span></div>) : <p>Your spending mix will appear after a few entries.</p>}</div>
+      </div>
+    </section>
+
+    <section className="activity-card analysis-card">
+      <div className="analysis-heading"><div><p>Last 16 weeks</p><h2>Expenditure activity</h2></div><button className="help-button" title="Each square represents one day. Darker squares mean higher expenditure." aria-label="About expenditure activity">?</button></div>
+      <div className="activity-grid" aria-label="Daily expenditure over the last 16 weeks">
+        {activity.map((item) => {
+          const level = item.value === 0 ? 0 : item.value <= activityMax * .25 ? 1 : item.value <= activityMax * .5 ? 2 : item.value <= activityMax * .75 ? 3 : 4;
+          return <span key={item.date} className={`activity-cell level-${level}`} title={`${longDate(item.date)}: ${money(item.value, currency)}`} aria-label={`${item.date}: ${money(item.value, currency)}`} />;
+        })}
+      </div>
+      <div className="activity-legend"><span><i className="level-1" />Up to {money(activityMax * .25, currency)}</span><span><i className="level-2" />Up to {money(activityMax * .5, currency)}</span><span><i className="level-3" />Up to {money(activityMax * .75, currency)}</span><span><i className="level-4" />Above {money(activityMax * .75, currency)}</span></div>
+    </section>
+
+    <section className="explorer-card analysis-card">
+      <div className="explorer-head"><div><p>Transactions explorer</p><h2>{money(explorerTotal, currency)}</h2><span>{series.length} {explorerGroup === "day" ? "days" : explorerGroup === "month" ? "months" : "years"} included</span></div><button className="share-report" onClick={shareExplorer} aria-label="Share report summary">{shareStatus || "↗"}</button></div>
+      {series.length ? <>
+        <div className="trend-chart" aria-label={`${explorerType} grouped by ${explorerGroup}`}>
+          <div className="trend-y-labels"><span>{money(chartMax, currency)}</span><span>{money(chartMax / 2, currency)}</span><span>{money(0, currency)}</span></div>
+          <div className="trend-bars">{series.map((item) => <div className="trend-bar-wrap" key={item.key} title={`${explorerLabel(item.key, explorerGroup)}: ${money(item.value, currency)}`}><i style={{ height: `${Math.max(3, item.value / chartMax * 100)}%` }} /></div>)}</div>
+          <div className="trend-x-labels">{tickIndexes.map((index) => <span key={series[index].key}>{explorerLabel(series[index].key, explorerGroup)}</span>)}</div>
+        </div>
+        <div className="explorer-stats"><div><span>Highest</span><strong>{money(explorerHighest, currency)}</strong></div><div><span>Lowest</span><strong>{money(explorerLowest, currency)}</strong></div><div><span>Amplitude</span><strong>{money(explorerHighest - explorerLowest, currency)}</strong></div><div><span>Average</span><strong>{money(explorerAverage, currency)}</strong></div></div>
+      </> : <div className="explorer-empty">No {explorerType} data for this selection.</div>}
+      <div className="explorer-controls">
+        <div><span>Transaction type</span><div className="segmented-control"><button className={explorerType === "expense" ? "active" : ""} onClick={() => setExplorerType("expense")}>Expenditure</button><button className={explorerType === "income" ? "active" : ""} onClick={() => setExplorerType("income")}>Income</button></div></div>
+        <div><span>Group by</span><div className="segmented-control group-control">{(["day", "month", "year"] as ExplorerGroup[]).map((group) => <button key={group} className={explorerGroup === group ? "active" : ""} onClick={() => setExplorerGroup(group)}>{group[0].toUpperCase() + group.slice(1)}</button>)}</div></div>
+        <div><span>Filter outliers <button className="help-inline" title="Uses the standard 1.5× interquartile range rule." aria-label="About outlier filtering">?</button></span><button className={`outlier-toggle ${filterOutliers ? "active" : ""}`} onClick={() => setFilterOutliers((value) => !value)} aria-pressed={filterOutliers}>{filterOutliers ? "Filtering" : "Include all"}</button></div>
+      </div>
+      <button className="show-transactions" onClick={onShowTransactions}><span>Show all transactions</span><b>{transactions.length}</b></button>
+    </section>
+  </div>;
+}
+
+function TransactionsPanel({ groups, currency, canEdit, categoryEmoji, onEdit, onExport, onAdd }: {
+  groups: [string, Transaction[]][];
+  currency: string;
+  canEdit: boolean;
+  categoryEmoji: (name: string) => string;
+  onEdit: (transaction: Transaction) => void;
+  onExport: () => void;
+  onAdd: () => void;
+}) {
+  const transactionCount = groups.reduce((sum, [, items]) => sum + items.length, 0);
+  return <div className="transactions-page">
+    <section className="report-table-card entry-ledger-card">
+      <div className="ledger-toolbar">
+        <div><p>Detailed ledger</p><h2>All entries</h2><span>{transactionCount} transactions · Category, note and amount</span></div>
+        <button className="csv-button" onClick={onExport} disabled={!transactionCount}>⇩ Export CSV</button>
+      </div>
+      {groups.length ? <div className="ledger-table-scroll"><div className="entry-ledger">
+        <div className="ledger-column-head"><span>Category</span><span>Note</span><span>Amount</span><span aria-hidden="true" /></div>
+        {groups.map(([date, items]) => {
+          const dayNet = items.reduce((sum, item) => sum + (item.type === "income" ? item.amountCents : -item.amountCents), 0);
+          return <section className="ledger-day" key={date}>
+            <div className="ledger-day-head"><strong>{longDate(date)}</strong><span>{items.length} {items.length === 1 ? "entry" : "entries"}</span><b>{money(dayNet, items[0]?.currency ?? currency, true)}</b></div>
+            {items.map((item) => <button className="ledger-entry-row" key={item.id} onClick={() => canEdit && onEdit(item)} disabled={!canEdit} aria-label={canEdit ? `Edit ${displayNote(item.note)}` : `${item.category}, ${displayNote(item.note)}, view only`}>
+              <span className="ledger-category"><i style={{ background: `${categoryMeta[item.category]?.color ?? categoryMeta.Other.color}30` }}>{categoryEmoji(item.category)}</i><b>{item.category}</b></span>
+              <span className="ledger-note">{displayNote(item.note)}</span>
+              <strong className={item.type}>{item.type === "income" ? "+" : "−"}{money(item.amountCents, item.currency)}</strong>
+              <span className="ledger-edit">{canEdit ? "Edit" : "View"}</span>
+            </button>)}
+          </section>;
+        })}
+      </div></div> : <div className="ledger-empty"><span>🌿</span><h3>No entries yet</h3><p>{canEdit ? "Add a transaction and it will appear here." : "There are no entries to display."}</p>{canEdit && <button onClick={onAdd}>Add transaction</button>}</div>}
+    </section>
+  </div>;
 }
 
 function AuthLoading() {
