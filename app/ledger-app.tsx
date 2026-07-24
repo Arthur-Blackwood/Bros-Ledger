@@ -21,6 +21,7 @@ type View = "overview" | "reports" | "transactions" | "personalization";
 type LedgerRole = "owner" | "family";
 type ExplorerType = "expense" | "income";
 type ExplorerGroup = "day" | "month" | "year";
+type ExplorerPeriod = "week" | "month" | "quarter" | "year" | "all";
 type CategoryPeriod = "month" | "quarter" | "year";
 type ActivityView = "both" | "expense" | "income";
 type ActivityWeeks = 8 | 16 | 26;
@@ -28,6 +29,7 @@ type ActivityWeeks = 8 | 16 | 26;
 type ReportChartPreferences = {
   explorerType: ExplorerType;
   explorerGroup: ExplorerGroup;
+  explorerPeriod: ExplorerPeriod;
   filterOutliers: boolean;
   categoryPeriod: CategoryPeriod;
   categoryFilterOutliers: boolean;
@@ -41,6 +43,7 @@ const reportChartPreferencesKey = "daylight-ledger:report-chart-preferences:v1";
 const defaultReportChartPreferences: ReportChartPreferences = {
   explorerType: "expense",
   explorerGroup: "day",
+  explorerPeriod: "all",
   filterOutliers: false,
   categoryPeriod: "month",
   categoryFilterOutliers: false,
@@ -57,6 +60,7 @@ const readReportChartPreferences = (): ReportChartPreferences => {
     return {
       explorerType: value.explorerType === "income" ? "income" : "expense",
       explorerGroup: value.explorerGroup === "month" || value.explorerGroup === "year" ? value.explorerGroup : "day",
+      explorerPeriod: value.explorerPeriod === "week" || value.explorerPeriod === "month" || value.explorerPeriod === "quarter" || value.explorerPeriod === "year" ? value.explorerPeriod : "all",
       filterOutliers: Boolean(value.filterOutliers),
       categoryPeriod: value.categoryPeriod === "quarter" || value.categoryPeriod === "year" ? value.categoryPeriod : "month",
       categoryFilterOutliers: Boolean(value.categoryFilterOutliers),
@@ -401,6 +405,7 @@ function ReportsPanel({ transactions, selectedDate, currency, categoryEmoji, can
 }) {
   const [explorerType, setExplorerType] = useState<ExplorerType>("expense");
   const [explorerGroup, setExplorerGroup] = useState<ExplorerGroup>("day");
+  const [explorerPeriod, setExplorerPeriod] = useState<ExplorerPeriod>("all");
   const [filterOutliers, setFilterOutliers] = useState(false);
   const [categoryPeriod, setCategoryPeriod] = useState<CategoryPeriod>("month");
   const [categoryFilterOutliers, setCategoryFilterOutliers] = useState(false);
@@ -418,6 +423,7 @@ function ReportsPanel({ transactions, selectedDate, currency, categoryEmoji, can
     const saved = readReportChartPreferences();
     setExplorerType(saved.explorerType);
     setExplorerGroup(saved.explorerGroup);
+    setExplorerPeriod(saved.explorerPeriod);
     setFilterOutliers(saved.filterOutliers);
     setCategoryPeriod(saved.categoryPeriod);
     setCategoryFilterOutliers(saved.categoryFilterOutliers);
@@ -434,6 +440,7 @@ function ReportsPanel({ transactions, selectedDate, currency, categoryEmoji, can
       window.localStorage.setItem(reportChartPreferencesKey, JSON.stringify({
         explorerType,
         explorerGroup,
+        explorerPeriod,
         filterOutliers,
         categoryPeriod,
         categoryFilterOutliers,
@@ -445,7 +452,7 @@ function ReportsPanel({ transactions, selectedDate, currency, categoryEmoji, can
     } catch {
       // Preferences remain usable for the current visit when browser storage is unavailable.
     }
-  }, [chartPreferencesReady, explorerType, explorerGroup, filterOutliers, categoryPeriod, categoryFilterOutliers, groupSmallCategories, activityView, activityWeeks, activityFilterOutliers]);
+  }, [chartPreferencesReady, explorerType, explorerGroup, explorerPeriod, filterOutliers, categoryPeriod, categoryFilterOutliers, groupSmallCategories, activityView, activityWeeks, activityFilterOutliers]);
 
   const categoryPeriodMeta = useMemo(() => {
     const end = selectedDate;
@@ -515,14 +522,33 @@ function ReportsPanel({ transactions, selectedDate, currency, categoryEmoji, can
   const expenseActivityMax = activityScaleMaximum(activity.map((item) => item.expense), activityFilterOutliers);
   const incomeActivityMax = activityScaleMaximum(activity.map((item) => item.income), activityFilterOutliers);
 
+  const explorerPeriodMeta = useMemo(() => {
+    if (explorerPeriod === "all") return { start: null, end: selectedDate, label: "All time" };
+    const anchor = new Date(`${selectedDate}T12:00:00`);
+    const startDate = explorerPeriod === "week"
+      ? new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate() - 6, 12)
+      : explorerPeriod === "month"
+        ? new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate() - 29, 12)
+        : explorerPeriod === "quarter"
+          ? new Date(anchor.getFullYear(), anchor.getMonth() - 2, anchor.getDate(), 12)
+          : new Date(anchor.getFullYear(), 0, 1, 12);
+    return {
+      start: toDateKey(startDate),
+      end: selectedDate,
+      label: explorerPeriod === "week" ? "Last 7 days" : explorerPeriod === "month" ? "Last 30 days" : explorerPeriod === "quarter" ? "Last 3 months" : "This year",
+    };
+  }, [explorerPeriod, selectedDate]);
+
+  const explorerSourceTransactions = useMemo(() => transactions.filter((item) => item.type === explorerType && item.occurredAt <= explorerPeriodMeta.end && (!explorerPeriodMeta.start || item.occurredAt >= explorerPeriodMeta.start)), [transactions, explorerType, explorerPeriodMeta]);
+
   const rawSeries = useMemo(() => {
     const grouped = new Map<string, number>();
-    transactions.filter((item) => item.type === explorerType).forEach((item) => {
+    explorerSourceTransactions.forEach((item) => {
       const key = explorerKey(item.occurredAt, explorerGroup);
       grouped.set(key, (grouped.get(key) ?? 0) + item.amountCents);
     });
     return Array.from(grouped.entries()).sort(([left], [right]) => left.localeCompare(right)).map(([key, value]) => ({ key, value }));
-  }, [transactions, explorerType, explorerGroup]);
+  }, [explorerSourceTransactions, explorerGroup]);
 
   const series = useMemo(() => {
     if (!filterOutliers || rawSeries.length < 4) return rawSeries;
@@ -543,10 +569,10 @@ function ReportsPanel({ transactions, selectedDate, currency, categoryEmoji, can
   const chartMax = Math.max(explorerHighest, 1);
   const tickIndexes = Array.from(new Set([0, Math.floor((series.length - 1) / 3), Math.floor((series.length - 1) * 2 / 3), series.length - 1])).filter((index) => index >= 0);
   const activityDetails = selectedActivityDate ? transactions.filter((item) => item.occurredAt === selectedActivityDate && (activityView === "both" || item.type === activityView)) : [];
-  const explorerDetails = selectedExplorerKey ? transactions.filter((item) => item.type === explorerType && explorerKey(item.occurredAt, explorerGroup) === selectedExplorerKey) : [];
+  const explorerDetails = selectedExplorerKey ? explorerSourceTransactions.filter((item) => explorerKey(item.occurredAt, explorerGroup) === selectedExplorerKey) : [];
 
   const shareExplorer = async () => {
-    const text = `${explorerType === "expense" ? "Expenditure" : "Income"} total: ${money(explorerTotal, currency)}. Highest ${money(explorerHighest, currency)}, lowest ${money(explorerLowest, currency)}, average ${money(explorerAverage, currency)}.`;
+    const text = `${explorerType === "expense" ? "Expenditure" : "Income"} total for ${explorerPeriodMeta.label.toLowerCase()}: ${money(explorerTotal, currency)}. Highest ${money(explorerHighest, currency)}, lowest ${money(explorerLowest, currency)}, average ${money(explorerAverage, currency)}.`;
     if (navigator.share) await navigator.share({ title: "Daylight Ledger report", text });
     else await navigator.clipboard.writeText(text);
     setShareStatus(navigator.share ? "Shared" : "Copied");
@@ -595,7 +621,7 @@ function ReportsPanel({ transactions, selectedDate, currency, categoryEmoji, can
     </section>
 
     <section className="explorer-card analysis-card">
-      <div className="explorer-head"><div><p>Transactions explorer</p><h2>{money(explorerTotal, currency)}</h2><span>{series.length} {explorerGroup === "day" ? "days" : explorerGroup === "month" ? "months" : "years"} included</span></div><button className="share-report" onClick={shareExplorer} aria-label="Share report summary">{shareStatus || "↗"}</button></div>
+      <div className="explorer-head"><div><p>Transactions explorer</p><h2>{money(explorerTotal, currency)}</h2><span>{explorerPeriodMeta.label} · {series.length} {explorerGroup === "day" ? "days" : explorerGroup === "month" ? "months" : "years"} included</span></div><button className="share-report" onClick={shareExplorer} aria-label="Share report summary">{shareStatus || "↗"}</button></div>
       {series.length ? <>
         <div className="trend-chart" aria-label={`${explorerType} grouped by ${explorerGroup}`}>
           <div className="trend-y-labels"><span>{money(chartMax, currency)}</span><span>{money(chartMax / 2, currency)}</span><span>{money(0, currency)}</span></div>
@@ -606,6 +632,7 @@ function ReportsPanel({ transactions, selectedDate, currency, categoryEmoji, can
         <div className="explorer-stats"><div><span>Highest</span><strong>{money(explorerHighest, currency)}</strong></div><div><span>Lowest</span><strong>{money(explorerLowest, currency)}</strong></div><div><span>Amplitude</span><strong>{money(explorerHighest - explorerLowest, currency)}</strong></div><div><span>Average</span><strong>{money(explorerAverage, currency)}</strong></div></div>
       </> : <div className="explorer-empty">No {explorerType} data for this selection.</div>}
       <div className="explorer-controls">
+        <div><span>Period</span><div className="segmented-control period-control">{(["week", "month", "quarter", "year", "all"] as ExplorerPeriod[]).map((period) => <button key={period} className={explorerPeriod === period ? "active" : ""} onClick={() => { setExplorerPeriod(period); setSelectedExplorerKey(null); }}>{period === "week" ? "7 days" : period === "month" ? "30 days" : period === "quarter" ? "3 months" : period === "year" ? "Year" : "All"}</button>)}</div></div>
         <div><span>Transaction type</span><div className="segmented-control"><button className={explorerType === "expense" ? "active" : ""} onClick={() => { setExplorerType("expense"); setSelectedExplorerKey(null); }}>Expenditure</button><button className={explorerType === "income" ? "active" : ""} onClick={() => { setExplorerType("income"); setSelectedExplorerKey(null); }}>Income</button></div></div>
         <div><span>Group by</span><div className="segmented-control group-control">{(["day", "month", "year"] as ExplorerGroup[]).map((group) => <button key={group} className={explorerGroup === group ? "active" : ""} onClick={() => { setExplorerGroup(group); setSelectedExplorerKey(null); }}>{group[0].toUpperCase() + group.slice(1)}</button>)}</div></div>
         <div><span>Filter outliers <button className="help-inline" onClick={() => setOpenInfo((current) => current === "outliers" ? null : "outliers")} aria-label="About outlier filtering" aria-expanded={openInfo === "outliers"} aria-controls="outlier-info">?</button></span><button className={`outlier-toggle ${filterOutliers ? "active" : ""}`} onClick={() => { setFilterOutliers((value) => !value); setSelectedExplorerKey(null); }} aria-pressed={filterOutliers}>{filterOutliers ? "Filtering" : "Include all"}</button></div>
