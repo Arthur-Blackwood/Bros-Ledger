@@ -284,6 +284,12 @@ export function LedgerApp() {
     setNotice("Income is hidden.");
   };
 
+  const showIncome = () => {
+    setIncomeHidden(false);
+    setPrivacyUnlockOpen(false);
+    setNotice("Income is visible for this visit.");
+  };
+
   const removeTransaction = async (id: string) => {
     const response = await fetch(`/api/transactions?id=${encodeURIComponent(id)}`, { method: "DELETE" });
     if (response.ok) {
@@ -332,7 +338,7 @@ export function LedgerApp() {
             <p className="eyebrow">{view === "overview" ? "Today under southern skies" : view === "reports" ? "Spending insights" : view === "transactions" ? "Detailed ledger" : "Make it yours"}</p>
             <h1>{view === "overview" ? "Money, in a clearer light." : view === "reports" ? "Where did the money go?" : view === "transactions" ? "Every entry, in one place." : "Your quickest categories."}</h1>
           </div>
-          <div className="topbar-actions"><span className={`access-badge ${canEdit ? "owner" : "family"}`}>{canEdit ? "Owner" : "Family · View only"}</span><button type="button" className={`privacy-toggle ${incomeHidden ? "hidden" : "shown"}`} onClick={() => incomeHidden ? setPrivacyUnlockOpen(true) : hideIncome()} aria-pressed={!incomeHidden}><span aria-hidden="true">{incomeHidden ? "◉" : "◎"}</span>{incomeHidden ? "Income hidden" : "Income shown"}</button>{canEdit && view === "reports" && <button className="personalize-shortcut" onClick={() => setView("personalization")}>Personalize</button>}{canEdit && <button className="add-button" onClick={() => setDrawerOpen(true)}><span>＋</span> Add transaction</button>}</div>
+          <div className="topbar-actions"><span className={`access-badge ${canEdit ? "owner" : "family"}`}>{canEdit ? "Owner" : "Family · View only"}</span><button type="button" className={`privacy-toggle ${incomeHidden ? "hidden" : "shown"}`} onClick={() => incomeHidden ? canEdit ? showIncome() : setPrivacyUnlockOpen(true) : hideIncome()} aria-pressed={!incomeHidden}><span aria-hidden="true">{incomeHidden ? "◉" : "◎"}</span>{incomeHidden ? "Income hidden" : "Income shown"}</button>{canEdit && view === "reports" && <button className="personalize-shortcut" onClick={() => setView("personalization")}>Personalize</button>}{canEdit && <button className="add-button" onClick={() => setDrawerOpen(true)}><span>＋</span> Add transaction</button>}</div>
         </header>
 
         {notice && <div className="notice" role="status">{notice}<button onClick={() => setNotice("")}>×</button></div>}
@@ -341,9 +347,9 @@ export function LedgerApp() {
           <div className="dashboard-grid">
             <section className="balance-card">
               <div className="balance-head"><span>Net cash flow</span><button aria-label="Cash flow options">•••</button></div>
-              <strong className={incomeHidden ? "privacy-mask" : ""} aria-label={incomeHidden ? "Income hidden" : undefined}>{incomeHidden ? "••••" : money(monthIncome - monthExpense, currency, true)}</strong>
+              <strong aria-label={incomeHidden ? "Income treated as zero" : undefined}>{money((incomeHidden ? 0 : monthIncome) - monthExpense, currency, true)}</strong>
               <div className="balance-meta">
-                <div><span className="legend-dot income" />Income this month <b className={incomeHidden ? "privacy-mask" : ""}>{incomeHidden ? "••••" : money(monthIncome, currency)}</b></div>
+                <div><span className="legend-dot income" />Income this month <b>{money(incomeHidden ? 0 : monthIncome, currency)}</b></div>
                 <div><span className="legend-dot expense" />Spent this month <b>{money(monthExpense, currency)}</b></div>
               </div>
               <div className="balance-art" aria-hidden="true"><i /><i /><i /></div>
@@ -362,7 +368,7 @@ export function LedgerApp() {
                 <div><h2>{selectedDate === today ? "Today" : longDate(selectedDate)}</h2><p>{selectedDate} · {selectedItems.length} {selectedItems.length === 1 ? "entry" : "entries"}</p></div>
                 <button onClick={() => setSelectedDate(dateShift(selectedDate, 1))} aria-label="Next day" disabled={selectedDate >= today}>›</button>
               </div>
-              <div className="day-total"><span>Net for the day</span><strong className={incomeHidden ? "privacy-mask" : ""}>{incomeHidden ? "••••" : money(selectedIncome - selectedExpense, currency, true)}</strong></div>
+              <div className="day-total"><span>Net for the day</span><strong>{money((incomeHidden ? 0 : selectedIncome) - selectedExpense, currency, true)}</strong></div>
               <div className="transaction-list">
                 {loading ? <div className="empty-state">Opening your ledger…</div> : selectedItems.length ? selectedItems.map((item) => (
                   <article className="transaction" key={item.id}>
@@ -404,7 +410,7 @@ export function LedgerApp() {
 
       {canEdit && drawerOpen && <TransactionDrawer today={today} categories={categories} incomeHidden={incomeHidden} onClose={() => setDrawerOpen(false)} onSaved={async () => { setDrawerOpen(false); await loadTransactions(); setNotice("Transaction saved."); }} />}
       {canEdit && editingTransaction && <EditTransactionDrawer transaction={editingTransaction} categories={categories} incomeHidden={incomeHidden} onClose={() => setEditingTransaction(null)} onSaved={async () => { setEditingTransaction(null); await loadTransactions(); setNotice("Entry updated."); }} onDeleted={async () => { setEditingTransaction(null); await loadTransactions(); setNotice("Entry deleted."); }} />}
-      {privacyUnlockOpen && <IncomePrivacyUnlock onClose={() => setPrivacyUnlockOpen(false)} onUnlocked={() => { setPrivacyUnlockOpen(false); setIncomeHidden(false); setNotice("Income is visible for this visit."); }} />}
+      {privacyUnlockOpen && <IncomePrivacyUnlock onClose={() => setPrivacyUnlockOpen(false)} onUnlocked={showIncome} />}
     </main>
   );
 }
