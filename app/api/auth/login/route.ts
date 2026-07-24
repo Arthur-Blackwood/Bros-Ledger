@@ -39,8 +39,10 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const pin = String(body.pin ?? "").trim();
+    const requireOwner = body.requireOwner === true;
+    const verifyOnly = body.verifyOnly === true;
     const role = /^\d{5}$/.test(pin) ? await authenticatePin(pin) : null;
-    if (!role) {
+    if (!role || (requireOwner && role !== "owner")) {
       const withinWindow = Boolean(attempt && now - attempt.window_started < WINDOW_SECONDS);
       const failedCount = withinWindow ? attempt!.failed_count + 1 : 1;
       const windowStarted = withinWindow ? attempt!.window_started : now;
@@ -49,10 +51,11 @@ export async function POST(request: NextRequest) {
         VALUES (?, ?, ?, ?)
         ON CONFLICT(client_key) DO UPDATE SET failed_count = excluded.failed_count, window_started = excluded.window_started, locked_until = excluded.locked_until`)
         .bind(clientKey, failedCount, windowStarted, lockedUntil).run();
-      return noStore(NextResponse.json({ error: lockedUntil ? "Too many attempts. Please wait before trying again." : "That PIN is not recognised." }, { status: lockedUntil ? 429 : 401 }));
+      return noStore(NextResponse.json({ error: lockedUntil ? "Too many attempts. Please wait before trying again." : requireOwner ? "Owner PIN required." : "That PIN is not recognised." }, { status: lockedUntil ? 429 : 401 }));
     }
 
     await db.prepare("DELETE FROM auth_attempts WHERE client_key = ?").bind(clientKey).run();
+    if (verifyOnly) return noStore(NextResponse.json({ authenticated: true, role }));
     const response = NextResponse.json({ authenticated: true, role });
     response.cookies.set(SESSION_COOKIE, await createSessionToken(role), {
       httpOnly: true,
