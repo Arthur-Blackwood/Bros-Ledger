@@ -1120,7 +1120,7 @@ function AutoGrowingNoteInput({ value, onChange, placeholder }: { value: string;
     noteField.current.style.height = `${noteField.current.scrollHeight}px`;
   }, [value]);
 
-  return <textarea ref={noteField} className="auto-grow-note" rows={1} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} maxLength={240} required />;
+  return <textarea ref={noteField} className="auto-grow-note" rows={1} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} required />;
 }
 
 function EditTransactionDrawer({ transaction, categories, incomeHidden, onClose, onSaved, onDeleted }: { transaction: Transaction; categories: LedgerCategory[]; incomeHidden: boolean; onClose: () => void; onSaved: () => void; onDeleted: () => void }) {
