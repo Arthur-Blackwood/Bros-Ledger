@@ -25,6 +25,19 @@ type ExplorerPeriod = "week" | "month" | "quarter" | "year" | "all";
 type CategoryPeriod = "month" | "quarter" | "year";
 type ActivityView = "both" | "expense" | "income";
 type ActivityWeeks = 8 | 16 | 26;
+type ThemePreference = "system" | "light" | "dark";
+
+const themePreferenceKey = "daylight-ledger:theme:v1";
+
+const readThemePreference = (): ThemePreference => {
+  if (typeof window === "undefined") return "system";
+  try {
+    const saved = window.localStorage.getItem(themePreferenceKey);
+    return saved === "light" || saved === "dark" ? saved : "system";
+  } catch {
+    return "system";
+  }
+};
 
 type ReportChartPreferences = {
   explorerType: ExplorerType;
@@ -154,6 +167,24 @@ export function LedgerApp() {
   const [notice, setNotice] = useState("");
   const [incomeHidden, setIncomeHidden] = useState(true);
   const [privacyUnlockOpen, setPrivacyUnlockOpen] = useState(false);
+  const [themePreference, setThemePreference] = useState<ThemePreference>(readThemePreference);
+
+  useEffect(() => {
+    const systemTheme = window.matchMedia("(prefers-color-scheme: dark)");
+    const applyTheme = () => {
+      const resolved = themePreference === "system" ? systemTheme.matches ? "dark" : "light" : themePreference;
+      document.documentElement.dataset.theme = resolved;
+      document.documentElement.dataset.themePreference = themePreference;
+    };
+    applyTheme();
+    systemTheme.addEventListener("change", applyTheme);
+    return () => systemTheme.removeEventListener("change", applyTheme);
+  }, [themePreference]);
+
+  const updateThemePreference = (preference: ThemePreference) => {
+    setThemePreference(preference);
+    try { window.localStorage.setItem(themePreferenceKey, preference); } catch { /* Keep the theme for this visit. */ }
+  };
 
   const loadTransactions = async () => {
     try {
@@ -396,7 +427,7 @@ export function LedgerApp() {
 
         {view === "transactions" && <TransactionsPanel groups={reportGroups} currency={currency} canEdit={canEdit} categoryEmoji={categoryEmoji} onEdit={setEditingTransaction} onExport={exportCsv} onAdd={() => setDrawerOpen(true)} />}
 
-        {view === "personalization" && canEdit && <PersonalizationPanel key={incomeHidden ? "income-hidden" : "income-shown"} categories={categories} incomeHidden={incomeHidden} onChanged={async () => { await Promise.all([loadCategories(), loadTransactions()]); }} />}
+        {view === "personalization" && canEdit && <PersonalizationPanel key={incomeHidden ? "income-hidden" : "income-shown"} categories={categories} incomeHidden={incomeHidden} themePreference={themePreference} onThemeChange={updateThemePreference} onChanged={async () => { await Promise.all([loadCategories(), loadTransactions()]); }} />}
 
       </section>
 
@@ -843,7 +874,7 @@ function IncomePrivacyUnlock({ onClose, onUnlocked }: { onClose: () => void; onU
   </div>;
 }
 
-function PersonalizationPanel({ categories, incomeHidden, onChanged }: { categories: LedgerCategory[]; incomeHidden: boolean; onChanged: () => Promise<void> }) {
+function PersonalizationPanel({ categories, incomeHidden, themePreference, onThemeChange, onChanged }: { categories: LedgerCategory[]; incomeHidden: boolean; themePreference: ThemePreference; onThemeChange: (preference: ThemePreference) => void; onChanged: () => Promise<void> }) {
   const [editing, setEditing] = useState<LedgerCategory | null>(null);
   const [orderedCategories, setOrderedCategories] = useState(categories);
   const orderedCategoriesRef = useRef(categories);
@@ -994,7 +1025,7 @@ function PersonalizationPanel({ categories, incomeHidden, onChanged }: { categor
     const group = orderedCategories.filter((category) => category.type === type);
     if (incomeHidden && type === "income") return <section className="category-group privacy-locked-section">
       <div className="category-group-heading"><div><strong>{title}</strong><span>{description}</span></div><em aria-label="Income category count hidden">—</em></div>
-      <div className="privacy-locked-copy"><span aria-hidden="true">◉</span><div><strong>Income categories hidden</strong><p>Use the Income hidden control above and enter the Owner PIN to reveal them.</p></div></div>
+      <div className="privacy-locked-copy"><span aria-hidden="true">◉</span><div><strong>Income categories hidden</strong><p>Use the Income hidden control above to reveal them.</p></div></div>
     </section>;
     return <section className="category-group">
       <div className="category-group-heading"><div><strong>{title}</strong><span>{description}</span></div><em>{group.length}</em></div>
@@ -1006,6 +1037,13 @@ function PersonalizationPanel({ categories, incomeHidden, onChanged }: { categor
   };
 
   return <div className="personalization-grid">
+    <section className="theme-control-card">
+      <div className="section-heading"><div><p>Appearance</p><h2>Theme</h2></div><span>Saved on this device</span></div>
+      <p className="theme-control-copy">Choose a fixed appearance or let Daylight Ledger follow your system setting.</p>
+      <div className="theme-options" role="radiogroup" aria-label="Application theme">
+        {(["system", "light", "dark"] as ThemePreference[]).map((preference) => <button type="button" role="radio" aria-checked={themePreference === preference} className={themePreference === preference ? "active" : ""} key={preference} onClick={() => onThemeChange(preference)}><span aria-hidden="true">{preference === "system" ? "◐" : preference === "light" ? "☀" : "◑"}</span><strong>{preference[0].toUpperCase() + preference.slice(1)}</strong><small>{preference === "system" ? "Follow this device" : preference === "light" ? "Always light" : "Always dark"}</small></button>)}
+      </div>
+    </section>
     <section className="category-library-card">
       <div className="section-heading"><div><p>Quick selection</p><h2>Your categories</h2></div><span>{savingOrder ? "Saving order…" : incomeHidden ? `${categories.filter((category) => category.type === "expense").length} expenses saved` : `${categories.length} saved`}</span></div>
       <p className="personalization-copy">Drag within a section to reorder, or drag across sections to change whether a category appears under Expense or Income.</p>
