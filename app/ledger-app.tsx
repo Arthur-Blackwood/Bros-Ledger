@@ -14,11 +14,12 @@ type Transaction = {
   tags: string[];
   source: string;
 };
+type TransactionDraft = { date: string; type: Transaction["type"]; amount: number; category: string; account: string; note: string };
+type TransactionChanges = { category: string; note: string; account: string; amount: number };
 
 type CategoryType = "expense" | "income";
 type LedgerCategory = { id: string; name: string; emoji: string; type: CategoryType };
 type View = "overview" | "reports" | "transactions" | "personalization";
-type LedgerRole = "owner" | "family";
 type ExplorerType = "expense" | "income";
 type ExplorerGroup = "day" | "month" | "year";
 type ExplorerPeriod = "week" | "month" | "quarter" | "year" | "all";
@@ -26,6 +27,102 @@ type CategoryPeriod = "month" | "quarter" | "year";
 type ActivityView = "both" | "expense" | "income";
 type ActivityWeeks = 8 | 16 | 26;
 type ThemePreference = "system" | "light" | "dark";
+
+const localTransactionsKey = "bros-ledger:transactions:v1";
+const localCategoriesKey = "bros-ledger:categories:v1";
+const privacyPinHashKey = "bros-ledger:privacy-pin-hash:v1";
+const privacyPinSaltKey = "bros-ledger:privacy-pin-salt:v1";
+
+const starterCategoryTemplates: Array<[string, string, CategoryType]> = [
+  ["Food", "🍜", "expense"], ["Transport", "🚆", "expense"], ["Shopping", "🛍️", "expense"],
+  ["Home", "🏠", "expense"], ["Fun", "🎬", "expense"], ["Health", "🌿", "expense"],
+  ["Other", "✨", "expense"], ["Income", "💰", "income"],
+];
+
+const saveLocalTransactions = (transactions: Transaction[]) => window.localStorage.setItem(localTransactionsKey, JSON.stringify(transactions));
+const saveLocalCategories = (categories: LedgerCategory[]) => window.localStorage.setItem(localCategoriesKey, JSON.stringify(categories));
+
+const readLocalTransactions = () => {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(localTransactionsKey) ?? "[]");
+    return Array.isArray(parsed) ? parsed as Transaction[] : [];
+  } catch { return []; }
+};
+
+const readLocalCategories = () => {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(localCategoriesKey) ?? "null");
+    if (Array.isArray(parsed) && parsed.length) return parsed as LedgerCategory[];
+  } catch { /* Create the starter set below. */ }
+  const categories = starterCategoryTemplates.map(([name, emoji, type]) => ({ id: crypto.randomUUID(), name, emoji, type }));
+  saveLocalCategories(categories);
+  return categories;
+};
+
+const bytesToBase64 = (bytes: Uint8Array) => btoa(Array.from(bytes, (byte) => String.fromCharCode(byte)).join(""));
+const base64ToBytes = (value: string) => Uint8Array.from(atob(value), (character) => character.charCodeAt(0));
+const bytesToHex = (bytes: ArrayBuffer) => Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
+
+const derivePrivacyPinHash = async (pin: string, salt: Uint8Array) => {
+  const material = await crypto.subtle.importKey("raw", new TextEncoder().encode(pin), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations: 120_000 }, material, 256);
+  return bytesToHex(bits);
+};
+
+const createPrivacyPin = async (pin: string) => {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const hash = await derivePrivacyPinHash(pin, salt);
+  window.localStorage.setItem(privacyPinSaltKey, bytesToBase64(salt));
+  window.localStorage.setItem(privacyPinHashKey, hash);
+};
+
+const verifyPrivacyPin = async (pin: string) => {
+  const salt = window.localStorage.getItem(privacyPinSaltKey);
+  const expected = window.localStorage.getItem(privacyPinHashKey);
+  if (!salt || !expected) return false;
+  return await derivePrivacyPinHash(pin, base64ToBytes(salt)) === expected;
+};
+
+const parseCsvRows = (text: string) => {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = "";
+  let quoted = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (quoted) {
+      if (character === '"' && text[index + 1] === '"') { field += '"'; index += 1; }
+      else if (character === '"') quoted = false;
+      else field += character;
+    } else if (character === '"') quoted = true;
+    else if (character === ",") { row.push(field); field = ""; }
+    else if (character === "\n") { row.push(field.replace(/\r$/, "")); rows.push(row); row = []; field = ""; }
+    else field += character;
+  }
+  if (field || row.length) { row.push(field.replace(/\r$/, "")); rows.push(row); }
+  return rows.filter((item) => item.some((value) => value.trim()));
+};
+
+const transactionsFromCsv = (text: string) => {
+  const rows = parseCsvRows(text.replace(/^\uFEFF/, ""));
+  if (rows.length < 2) throw new Error("The CSV file has no transactions.");
+  const headers = rows[0].map((value) => value.trim().toLowerCase());
+  const required = ["date", "category", "note", "account", "amount"];
+  const indexes = Object.fromEntries(required.map((name) => [name, headers.indexOf(name)])) as Record<string, number>;
+  if (required.some((name) => indexes[name] < 0)) throw new Error("Use the Bro's Ledger CSV columns: Date, Category, Note, Account and Amount.");
+  return rows.slice(1).map((row, rowIndex) => {
+    const occurredAt = row[indexes.date]?.trim();
+    const rawAmount = row[indexes.amount]?.trim().replace(/[A-Z$\s,]/gi, "").replace("−", "-");
+    const amount = Number(rawAmount);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(occurredAt) || !Number.isFinite(amount) || amount === 0) throw new Error(`CSV row ${rowIndex + 2} has an invalid date or amount.`);
+    const type: Transaction["type"] = amount > 0 ? "income" : "expense";
+    return {
+      id: crypto.randomUUID(), occurredAt, type, amountCents: Math.round(Math.abs(amount) * 100), currency: "AUD",
+      category: row[indexes.category]?.trim() || (type === "income" ? "Income" : "Other"),
+      note: row[indexes.note] ?? "", account: row[indexes.account]?.trim() || "Everyday", tags: [], source: "csv",
+    } satisfies Transaction;
+  });
+};
 
 const themePreferenceKey = "bros-ledger:theme:v1";
 const legacyThemePreferenceKey = "daylight-ledger:theme:v1";
@@ -160,8 +257,7 @@ const activityLevel = (value: number, maximum: number) => value === 0 ? 0 : valu
 
 export function LedgerApp() {
   const today = useMemo(() => toDateKey(), []);
-  const [role, setRole] = useState<LedgerRole | null>(null);
-  const [authChecking, setAuthChecking] = useState(true);
+  const [pinReady, setPinReady] = useState<boolean | null>(null);
   const [view, setView] = useState<View>("overview");
   const [selectedDate, setSelectedDate] = useState(today);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -191,61 +287,14 @@ export function LedgerApp() {
     try { window.localStorage.setItem(themePreferenceKey, preference); } catch { /* Keep the theme for this visit. */ }
   };
 
-  const loadTransactions = async () => {
-    try {
-      const response = await fetch("/api/transactions", { cache: "no-store" });
-      const data = await response.json();
-      if (response.status === 401) {
-        setRole(null);
-        setTransactions([]);
-        return;
-      }
-      if (!response.ok) throw new Error(data.error || "Could not load the ledger.");
-      setTransactions(data.transactions ?? []);
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "The ledger is temporarily offline.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadCategories = async () => {
-    try {
-      const response = await fetch("/api/categories", { cache: "no-store" });
-      const data = await response.json();
-      if (response.status === 401) {
-        setRole(null);
-        setCategories([]);
-        return;
-      }
-      if (!response.ok) throw new Error(data.error || "Could not load categories.");
-      setCategories(data.categories ?? []);
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Could not load categories.");
-    }
-  };
-
   useEffect(() => {
-    const checkSession = async () => {
-      try {
-        const response = await fetch("/api/auth/session", { cache: "no-store" });
-        const data = await response.json();
-        setRole(response.ok ? data.role : null);
-      } catch { setRole(null); }
-      finally { setAuthChecking(false); }
-    };
-    void checkSession();
+    setTransactions(readLocalTransactions());
+    setCategories(readLocalCategories());
+    setPinReady(Boolean(window.localStorage.getItem(privacyPinHashKey) && window.localStorage.getItem(privacyPinSaltKey)));
+    setLoading(false);
   }, []);
 
-  useEffect(() => {
-    if (role) {
-      setLoading(true);
-      void loadTransactions();
-      void loadCategories();
-    }
-  }, [role]);
-
-  const canEdit = role === "owner";
+  const canEdit = true;
   const visibleTransactions = useMemo(() => incomeHidden ? transactions.filter((item) => item.type === "expense") : transactions, [transactions, incomeHidden]);
   const categoryEmoji = (name: string) => categories.find((category) => category.name === name)?.emoji ?? categoryMeta[name]?.emoji ?? "✨";
   const currency = visibleTransactions[0]?.currency ?? "AUD";
@@ -312,6 +361,40 @@ export function LedgerApp() {
     setNotice(incomeHidden ? "Expense-only CSV exported. Income remains hidden." : "CSV exported.");
   };
 
+  const importCsv = async (file: File) => {
+    const imported = transactionsFromCsv(await file.text());
+    const nextTransactions = [...imported, ...transactions];
+    saveLocalTransactions(nextTransactions);
+    setTransactions(nextTransactions);
+    const nextCategories = [...categories];
+    imported.forEach((item) => {
+      if (!nextCategories.some((category) => category.name.toLowerCase() === item.category.toLowerCase())) {
+        nextCategories.push({ id: crypto.randomUUID(), name: item.category, emoji: "✨", type: item.type });
+      }
+    });
+    saveLocalCategories(nextCategories);
+    setCategories(nextCategories);
+    setNotice(`${imported.length} transaction${imported.length === 1 ? "" : "s"} imported from CSV.`);
+  };
+
+  const addTransaction = async (draft: TransactionDraft) => {
+    if (!Number.isFinite(draft.amount) || draft.amount <= 0) throw new Error("Enter an amount greater than zero.");
+    const transaction: Transaction = {
+      id: crypto.randomUUID(), occurredAt: draft.date, type: draft.type, amountCents: Math.round(draft.amount * 100),
+      currency: "AUD", category: draft.category, account: draft.account.trim() || "Everyday", note: draft.note, tags: [], source: "manual",
+    };
+    const next = [transaction, ...transactions];
+    saveLocalTransactions(next);
+    setTransactions(next);
+  };
+
+  const updateTransaction = async (id: string, changes: TransactionChanges) => {
+    if (!Number.isFinite(changes.amount) || changes.amount <= 0) throw new Error("Enter an amount greater than zero.");
+    const next = transactions.map((item) => item.id === id ? { ...item, category: changes.category.trim(), note: changes.note, account: changes.account.trim() || "Everyday", amountCents: Math.round(changes.amount * 100) } : item);
+    saveLocalTransactions(next);
+    setTransactions(next);
+  };
+
   const hideIncome = () => {
     setIncomeHidden(true);
     setPrivacyUnlockOpen(false);
@@ -327,27 +410,40 @@ export function LedgerApp() {
   };
 
   const removeTransaction = async (id: string) => {
-    const response = await fetch(`/api/transactions?id=${encodeURIComponent(id)}`, { method: "DELETE" });
-    if (response.ok) {
-      setTransactions((items) => items.filter((item) => item.id !== id));
-      setNotice("Transaction deleted.");
+    const next = transactions.filter((item) => item.id !== id);
+    saveLocalTransactions(next);
+    setTransactions(next);
+    setNotice("Transaction deleted.");
+  };
+
+  const saveCategoryOrder = async (ordered: LedgerCategory[]) => {
+    saveLocalCategories(ordered);
+    setCategories(ordered);
+  };
+
+  const saveCategory = async (draft: Omit<LedgerCategory, "id">, editing: LedgerCategory | null) => {
+    if (!draft.name.trim()) throw new Error("Category name is required.");
+    if (categories.some((item) => item.id !== editing?.id && item.name.toLowerCase() === draft.name.trim().toLowerCase())) throw new Error("That category already exists.");
+    const nextCategories = editing
+      ? categories.map((item) => item.id === editing.id ? { ...item, ...draft, name: draft.name.trim() } : item)
+      : [...categories, { id: crypto.randomUUID(), ...draft, name: draft.name.trim() }];
+    if (editing && editing.name !== draft.name.trim()) {
+      const nextTransactions = transactions.map((item) => item.category === editing.name ? { ...item, category: draft.name.trim() } : item);
+      saveLocalTransactions(nextTransactions);
+      setTransactions(nextTransactions);
     }
+    saveLocalCategories(nextCategories);
+    setCategories(nextCategories);
   };
 
-  const logout = async () => {
-    await fetch("/api/auth/logout", { method: "POST" });
-    setRole(null);
-    setTransactions([]);
-    setCategories([]);
-    setDrawerOpen(false);
-    setEditingTransaction(null);
-    setIncomeHidden(true);
-    setPrivacyUnlockOpen(false);
-    setView("overview");
+  const removeCategory = async (id: string) => {
+    const next = categories.filter((item) => item.id !== id);
+    saveLocalCategories(next);
+    setCategories(next);
   };
 
-  if (authChecking) return <AuthLoading />;
-  if (!role) return <PinGate onAuthenticated={setRole} />;
+  if (pinReady === null) return <AuthLoading />;
+  if (!pinReady) return <PrivacyPinSetup onCreated={() => setPinReady(true)} />;
 
   return (
     <main className="app-shell">
@@ -362,9 +458,8 @@ export function LedgerApp() {
           {canEdit && <NavItem active={view === "personalization"} icon="✎" label="Personalization" onClick={() => setView("personalization")} />}
         </nav>
         <div className="sidebar-foot">
-          <div className="sync-dot"><span /> Data saved</div>
-          <p>{canEdit ? "Owner access" : "Family access · View only"}</p>
-          <button className="logout-button" onClick={logout}>Log out</button>
+          <div className="sync-dot"><span /> Saved on this device</div>
+          <p>Private to this browser</p>
         </div>
       </aside>
 
@@ -374,7 +469,7 @@ export function LedgerApp() {
             <p className="eyebrow">{view === "overview" ? "Today under southern skies" : view === "reports" ? "Spending insights" : view === "transactions" ? "Detailed ledger" : "Make it yours"}</p>
             <h1>{view === "overview" ? "Money, in a clearer light." : view === "reports" ? "Where did the money go?" : view === "transactions" ? "Every entry, in one place." : "Your quickest categories."}</h1>
           </div>
-          <div className="topbar-actions"><span className={`access-badge ${canEdit ? "owner" : "family"}`}>{canEdit ? "Owner" : "Family · View only"}</span><button type="button" className={`privacy-toggle ${incomeHidden ? "hidden" : "shown"}`} onClick={() => incomeHidden ? canEdit ? showIncome() : setPrivacyUnlockOpen(true) : hideIncome()} aria-pressed={!incomeHidden}><span aria-hidden="true">{incomeHidden ? "◉" : "◎"}</span>{incomeHidden ? "Income hidden" : "Income shown"}</button>{canEdit && view === "reports" && <button className="personalize-shortcut" onClick={() => setView("personalization")}>Personalize</button>}{canEdit && <button className="add-button" onClick={() => setDrawerOpen(true)}><span>＋</span> Add transaction</button>}</div>
+          <div className="topbar-actions"><span className="access-badge owner">Local only</span><button type="button" className={`privacy-toggle ${incomeHidden ? "hidden" : "shown"}`} onClick={() => incomeHidden ? setPrivacyUnlockOpen(true) : hideIncome()} aria-pressed={!incomeHidden}><span aria-hidden="true">{incomeHidden ? "◉" : "◎"}</span>{incomeHidden ? "Income hidden" : "Income shown"}</button>{view === "reports" && <button className="personalize-shortcut" onClick={() => setView("personalization")}>Personalize</button>}<button className="add-button" onClick={() => setDrawerOpen(true)}><span>＋</span> Add transaction</button></div>
         </header>
 
         {notice && <div className="notice" role="status">{notice}<button onClick={() => setNotice("")}>×</button></div>}
@@ -430,22 +525,22 @@ export function LedgerApp() {
           <ReportsPanel transactions={visibleTransactions} selectedDate={selectedDate} currency={currency} categoryEmoji={categoryEmoji} canEdit={canEdit} incomeHidden={incomeHidden} onShowTransactions={() => setView("transactions")} onEditTransaction={(transaction) => { setView("transactions"); setEditingTransaction(transaction); }} />
         )}
 
-        {view === "transactions" && <TransactionsPanel groups={reportGroups} currency={currency} canEdit={canEdit} categoryEmoji={categoryEmoji} onEdit={setEditingTransaction} onExport={exportCsv} onAdd={() => setDrawerOpen(true)} />}
+        {view === "transactions" && <TransactionsPanel groups={reportGroups} currency={currency} canEdit={canEdit} categoryEmoji={categoryEmoji} onEdit={setEditingTransaction} onExport={exportCsv} onImport={importCsv} onAdd={() => setDrawerOpen(true)} />}
 
-        {view === "personalization" && canEdit && <PersonalizationPanel key={incomeHidden ? "income-hidden" : "income-shown"} categories={categories} incomeHidden={incomeHidden} themePreference={themePreference} onThemeChange={updateThemePreference} onChanged={async () => { await Promise.all([loadCategories(), loadTransactions()]); }} />}
+        {view === "personalization" && <PersonalizationPanel key={incomeHidden ? "income-hidden" : "income-shown"} categories={categories} incomeHidden={incomeHidden} themePreference={themePreference} onThemeChange={updateThemePreference} onReorder={saveCategoryOrder} onSave={saveCategory} onRemove={removeCategory} />}
 
       </section>
 
       <nav className="mobile-nav" aria-label="Mobile navigation">
         <NavItem active={view === "overview"} icon="⌂" label="Today" onClick={() => setView("overview")} />
         <NavItem active={view === "reports"} icon="↗" label="Reports" onClick={() => setView("reports")} />
-        {canEdit ? <button className="mobile-add" onClick={() => setDrawerOpen(true)} aria-label="Add transaction">＋</button> : <button className="mobile-readonly" disabled aria-label="View-only access">◉</button>}
+        <button className="mobile-add" onClick={() => setDrawerOpen(true)} aria-label="Add transaction">＋</button>
         <NavItem active={view === "transactions"} icon="≡" label="Transactions" onClick={() => setView("transactions")} />
-        <button onClick={logout}><span>↪</span><em>Log out</em></button>
+        <NavItem active={view === "personalization"} icon="✎" label="Personalize" onClick={() => setView("personalization")} />
       </nav>
 
-      {canEdit && drawerOpen && <TransactionDrawer today={today} categories={categories} incomeHidden={incomeHidden} onClose={() => setDrawerOpen(false)} onSaved={async () => { setDrawerOpen(false); await loadTransactions(); setNotice("Transaction saved."); }} />}
-      {canEdit && editingTransaction && <EditTransactionDrawer transaction={editingTransaction} categories={categories} incomeHidden={incomeHidden} onClose={() => setEditingTransaction(null)} onSaved={async () => { setEditingTransaction(null); await loadTransactions(); setNotice("Entry updated."); }} onDeleted={async () => { setEditingTransaction(null); await loadTransactions(); setNotice("Entry deleted."); }} />}
+      {drawerOpen && <TransactionDrawer today={today} categories={categories} incomeHidden={incomeHidden} onClose={() => setDrawerOpen(false)} onSave={addTransaction} onSaved={() => { setDrawerOpen(false); setNotice("Transaction saved on this device."); }} />}
+      {editingTransaction && <EditTransactionDrawer transaction={editingTransaction} categories={categories} incomeHidden={incomeHidden} onClose={() => setEditingTransaction(null)} onSave={updateTransaction} onDelete={removeTransaction} onSaved={() => { setEditingTransaction(null); setNotice("Entry updated on this device."); }} onDeleted={() => { setEditingTransaction(null); setNotice("Entry deleted."); }} />}
       {privacyUnlockOpen && <IncomePrivacyUnlock onClose={() => setPrivacyUnlockOpen(false)} onUnlocked={showIncome} />}
     </main>
   );
@@ -749,22 +844,34 @@ function InfoCallout({ id, children }: { id: string; children: ReactNode }) {
   return <aside className="info-callout" id={id} role="note"><span>i</span><p>{children}</p></aside>;
 }
 
-function TransactionsPanel({ groups, currency, canEdit, categoryEmoji, onEdit, onExport, onAdd }: {
+function TransactionsPanel({ groups, currency, canEdit, categoryEmoji, onEdit, onExport, onImport, onAdd }: {
   groups: [string, Transaction[]][];
   currency: string;
   canEdit: boolean;
   categoryEmoji: (name: string) => string;
   onEdit: (transaction: Transaction) => void;
   onExport: () => void;
+  onImport: (file: File) => Promise<void>;
   onAdd: () => void;
 }) {
   const transactionCount = groups.reduce((sum, [, items]) => sum + items.length, 0);
+  const csvInput = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState("");
+  const importFile = async (file: File | undefined) => {
+    if (!file) return;
+    setImporting(true); setImportError("");
+    try { await onImport(file); }
+    catch (error) { setImportError(error instanceof Error ? error.message : "Could not import this CSV file."); }
+    finally { setImporting(false); if (csvInput.current) csvInput.current.value = ""; }
+  };
   return <div className="transactions-page">
     <section className="report-table-card entry-ledger-card">
       <div className="ledger-toolbar">
         <div><p>Detailed ledger</p><h2>All entries</h2><span>{transactionCount} transactions · Category, note, account and amount</span></div>
-        <button className="csv-button" onClick={onExport} disabled={!transactionCount}>⇩ Export CSV</button>
+        <div className="csv-actions"><input ref={csvInput} type="file" accept=".csv,text/csv" onChange={(event) => void importFile(event.target.files?.[0])} /><button className="csv-button" onClick={() => csvInput.current?.click()} disabled={importing}>{importing ? "Importing…" : "⇧ Import CSV"}</button><button className="csv-button" onClick={onExport} disabled={!transactionCount}>⇩ Export CSV</button></div>
       </div>
+      {importError && <p className="csv-error" role="alert">{importError}</p>}
       {groups.length ? <div className="ledger-table-scroll"><div className="entry-ledger">
         <div className="ledger-column-head"><span>Category</span><span>Note</span><span>Account</span><span>Amount</span><span aria-hidden="true" /></div>
         {groups.map(([date, items]) => {
@@ -786,27 +893,22 @@ function TransactionsPanel({ groups, currency, canEdit, categoryEmoji, onEdit, o
 }
 
 function AuthLoading() {
-  return <main className="auth-shell"><div className="auth-card auth-loading"><span className="auth-mark">D</span><p>Opening your private ledger…</p></div></main>;
+  return <main className="auth-shell"><div className="auth-card auth-loading"><span className="auth-mark">B</span><p>Opening your local ledger…</p></div></main>;
 }
 
-function PinGate({ onAuthenticated }: { onAuthenticated: (role: LedgerRole) => void }) {
+function PrivacyPinSetup({ onCreated }: { onCreated: () => void }) {
   const [pin, setPin] = useState("");
+  const [confirmation, setConfirmation] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setSubmitting(true); setError("");
     try {
-      const response = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pin }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Could not sign in.");
-      setPin("");
-      onAuthenticated(data.role);
-    } catch (signInError) { setError(signInError instanceof Error ? signInError.message : "Could not sign in."); }
+      if (pin !== confirmation) throw new Error("The two PINs do not match.");
+      await createPrivacyPin(pin);
+      onCreated();
+    } catch (setupError) { setError(setupError instanceof Error ? setupError.message : "Could not create the privacy PIN."); }
     finally { setSubmitting(false); }
   };
 
@@ -814,14 +916,15 @@ function PinGate({ onAuthenticated }: { onAuthenticated: (role: LedgerRole) => v
     <section className="auth-card">
       <div className="auth-mark">B</div>
       <p className="eyebrow">Bro&apos;s Ledger</p>
-      <h1>Your family ledger,<br />kept private.</h1>
-      <p className="auth-copy">Enter your five-digit PIN to continue. Your access level is selected automatically.</p>
+      <h1>Your own ledger,<br />on this device.</h1>
+      <p className="auth-copy">Create a five-digit privacy PIN. It only unlocks income visibility; your new ledger starts empty and stays in this browser.</p>
       <form onSubmit={submit}>
-        <label>Access PIN<input autoFocus type="password" inputMode="numeric" autoComplete="current-password" pattern="[0-9]{5}" maxLength={5} value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 5))} placeholder="•••••" aria-describedby={error ? "pin-error" : undefined} required /></label>
+        <label>Privacy PIN<input autoFocus type="password" inputMode="numeric" autoComplete="new-password" pattern="[0-9]{5}" maxLength={5} value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 5))} placeholder="•••••" aria-describedby={error ? "pin-error" : undefined} required /></label>
+        <label>Confirm PIN<input type="password" inputMode="numeric" autoComplete="new-password" pattern="[0-9]{5}" maxLength={5} value={confirmation} onChange={(event) => setConfirmation(event.target.value.replace(/\D/g, "").slice(0, 5))} placeholder="•••••" required /></label>
         {error && <p className="auth-error" id="pin-error" role="alert">{error}</p>}
-        <button disabled={submitting || pin.length !== 5}>{submitting ? "Checking…" : "Unlock ledger"}</button>
+        <button disabled={submitting || pin.length !== 5 || confirmation.length !== 5}>{submitting ? "Creating…" : "Create local ledger"}</button>
       </form>
-      <div className="auth-assurance"><span>●</span><p><b>Private by design</b><br />Ledger data is never loaded before sign-in.</p></div>
+      <div className="auth-assurance"><span>●</span><p><b>Local by design</b><br />Clearing this browser&apos;s site data removes the ledger, so export CSV backups regularly.</p></div>
     </section>
   </main>;
 }
@@ -847,13 +950,7 @@ function IncomePrivacyUnlock({ onClose, onUnlocked }: { onClose: () => void; onU
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setSubmitting(true); setError("");
     try {
-      const response = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pin, requireOwner: true, verifyOnly: true }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Could not reveal income.");
+      if (!await verifyPrivacyPin(pin)) throw new Error("That PIN is not correct.");
       setPin("");
       onUnlocked();
     } catch (unlockError) {
@@ -868,9 +965,9 @@ function IncomePrivacyUnlock({ onClose, onUnlocked }: { onClose: () => void; onU
       <div className="privacy-icon" aria-hidden="true">◎</div>
       <p className="eyebrow">Income privacy</p>
       <h2 id="privacy-title">Reveal income for this visit?</h2>
-      <p>Enter the Owner PIN. Income will be hidden again when you refresh, close, or log out.</p>
+      <p>Enter this device&apos;s privacy PIN. Income will be hidden again when you refresh or close the app.</p>
       <form onSubmit={submit}>
-        <label>Owner PIN<input autoFocus type="password" inputMode="numeric" autoComplete="current-password" pattern="[0-9]{5}" maxLength={5} value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 5))} placeholder="•••••" aria-describedby={error ? "privacy-pin-error" : undefined} required /></label>
+        <label>Privacy PIN<input autoFocus type="password" inputMode="numeric" autoComplete="current-password" pattern="[0-9]{5}" maxLength={5} value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 5))} placeholder="•••••" aria-describedby={error ? "privacy-pin-error" : undefined} required /></label>
         {error && <p className="auth-error" id="privacy-pin-error" role="alert">{error}</p>}
         <button disabled={submitting || pin.length !== 5}>{submitting ? "Checking…" : "Reveal income"}</button>
       </form>
@@ -879,7 +976,7 @@ function IncomePrivacyUnlock({ onClose, onUnlocked }: { onClose: () => void; onU
   </div>;
 }
 
-function PersonalizationPanel({ categories, incomeHidden, themePreference, onThemeChange, onChanged }: { categories: LedgerCategory[]; incomeHidden: boolean; themePreference: ThemePreference; onThemeChange: (preference: ThemePreference) => void; onChanged: () => Promise<void> }) {
+function PersonalizationPanel({ categories, incomeHidden, themePreference, onThemeChange, onReorder, onSave, onRemove }: { categories: LedgerCategory[]; incomeHidden: boolean; themePreference: ThemePreference; onThemeChange: (preference: ThemePreference) => void; onReorder: (categories: LedgerCategory[]) => Promise<void>; onSave: (draft: Omit<LedgerCategory, "id">, editing: LedgerCategory | null) => Promise<void>; onRemove: (id: string) => Promise<void> }) {
   const [editing, setEditing] = useState<LedgerCategory | null>(null);
   const [orderedCategories, setOrderedCategories] = useState(categories);
   const orderedCategoriesRef = useRef(categories);
@@ -918,16 +1015,9 @@ function PersonalizationPanel({ categories, incomeHidden, themePreference, onThe
   const saveCategoryOrder = async (ordered = orderedCategoriesRef.current) => {
     setSavingOrder(true); setError("");
     try {
-      const response = await fetch("/api/categories", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
-        expenseIds: ordered.filter((category) => category.type === "expense").map((category) => category.id),
-        incomeIds: ordered.filter((category) => category.type === "income").map((category) => category.id),
-      }) });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Could not save the category order.");
-      await onChanged();
+      await onReorder(ordered);
     } catch (orderError) {
       setError(orderError instanceof Error ? orderError.message : "Could not save the category order.");
-      await onChanged();
     } finally { setSavingOrder(false); }
   };
 
@@ -1000,14 +1090,7 @@ function PersonalizationPanel({ categories, incomeHidden, themePreference, onThe
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setSaving(true); setError("");
     try {
-      const response = await fetch(editing ? `/api/categories?id=${encodeURIComponent(editing.id)}` : "/api/categories", {
-        method: editing ? "PATCH" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, emoji, categoryType }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Could not save the category.");
-      await onChanged();
+      await onSave({ name, emoji, type: categoryType }, editing);
       beginAdd();
     } catch (saveError) { setError(saveError instanceof Error ? saveError.message : "Could not save the category."); }
     finally { setSaving(false); }
@@ -1017,10 +1100,7 @@ function PersonalizationPanel({ categories, incomeHidden, themePreference, onThe
     if (!editing || !window.confirm(`Remove ${editing.name} from quick selection? Existing ledger entries will not be deleted.`)) return;
     setSaving(true); setError("");
     try {
-      const response = await fetch(`/api/categories?id=${encodeURIComponent(editing.id)}`, { method: "DELETE" });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Could not remove the category.");
-      await onChanged();
+      await onRemove(editing.id);
       beginAdd();
     } catch (deleteError) { setError(deleteError instanceof Error ? deleteError.message : "Could not remove the category."); }
     finally { setSaving(false); }
@@ -1056,7 +1136,7 @@ function PersonalizationPanel({ categories, incomeHidden, themePreference, onThe
       {!categories.length && <div className="category-library-empty">No quick categories yet.</div>}
     </section>
     <section className="category-editor-card">
-      <div className="section-heading"><div><p>Owner controls</p><h2>{editing ? "Edit category" : "Add category"}</h2></div>{editing && <button onClick={beginAdd}>Add new</button>}</div>
+      <div className="section-heading"><div><p>Local controls</p><h2>{editing ? "Edit category" : "Add category"}</h2></div>{editing && <button onClick={beginAdd}>Add new</button>}</div>
       <form onSubmit={submit}>
         <div className="category-type-toggle" aria-label="Category type"><button type="button" className={categoryType === "expense" ? "active" : ""} onClick={() => setCategoryType("expense")}>Expense</button><button type="button" disabled={incomeHidden} className={categoryType === "income" ? "active" : ""} onClick={() => setCategoryType("income")}>Income</button></div>
         <label className="field-label">Emoji<input className="emoji-input" value={emoji} onChange={(event) => setEmoji(event.target.value)} maxLength={8} placeholder="✨" required /></label>
@@ -1073,7 +1153,7 @@ function NavItem({ active, icon, label, onClick }: { active: boolean; icon: stri
   return <button className={active ? "active" : ""} onClick={onClick}><span>{icon}</span><em>{label}</em></button>;
 }
 
-function TransactionDrawer({ today, categories, incomeHidden, onClose, onSaved }: { today: string; categories: LedgerCategory[]; incomeHidden: boolean; onClose: () => void; onSaved: () => void }) {
+function TransactionDrawer({ today, categories, incomeHidden, onClose, onSave, onSaved }: { today: string; categories: LedgerCategory[]; incomeHidden: boolean; onClose: () => void; onSave: (draft: TransactionDraft) => Promise<void>; onSaved: () => void }) {
   const [type, setType] = useState<"expense" | "income">("expense");
   const [amount, setAmount] = useState("");
   const availableCategories = useMemo(() => categories.filter((item) => item.type === type), [categories, type]);
@@ -1093,10 +1173,8 @@ function TransactionDrawer({ today, categories, incomeHidden, onClose, onSaved }
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setSaving(true); setError("");
     try {
-      const response = await fetch("/api/transactions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date, type, amount: Number(amount), currency: "AUD", category, account, note, source: "manual" }) });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Could not save the transaction.");
-      await onSaved();
+      await onSave({ date, type, amount: Number(amount), category, account, note });
+      onSaved();
     } catch (saveError) { setError(saveError instanceof Error ? saveError.message : "Could not save the transaction."); }
     finally { setSaving(false); }
   };
@@ -1128,7 +1206,7 @@ function AutoGrowingNoteInput({ value, onChange, placeholder }: { value: string;
   return <textarea ref={noteField} className="auto-grow-note" rows={1} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} required />;
 }
 
-function EditTransactionDrawer({ transaction, categories, incomeHidden, onClose, onSaved, onDeleted }: { transaction: Transaction; categories: LedgerCategory[]; incomeHidden: boolean; onClose: () => void; onSaved: () => void; onDeleted: () => void }) {
+function EditTransactionDrawer({ transaction, categories, incomeHidden, onClose, onSave, onDelete, onSaved, onDeleted }: { transaction: Transaction; categories: LedgerCategory[]; incomeHidden: boolean; onClose: () => void; onSave: (id: string, changes: TransactionChanges) => Promise<void>; onDelete: (id: string) => Promise<void>; onSaved: () => void; onDeleted: () => void }) {
   const [category, setCategory] = useState(transaction.category);
   const [note, setNote] = useState(transaction.note);
   const [account, setAccount] = useState(transaction.account);
@@ -1141,14 +1219,8 @@ function EditTransactionDrawer({ transaction, categories, incomeHidden, onClose,
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setSaving(true); setError("");
     try {
-      const response = await fetch(`/api/transactions?id=${encodeURIComponent(transaction.id)}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ category, note, account, amount: Number(amount) }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Could not update the entry.");
-      await onSaved();
+      await onSave(transaction.id, { category, note, account, amount: Number(amount) });
+      onSaved();
     } catch (saveError) { setError(saveError instanceof Error ? saveError.message : "Could not update the entry."); }
     finally { setSaving(false); }
   };
@@ -1157,10 +1229,8 @@ function EditTransactionDrawer({ transaction, categories, incomeHidden, onClose,
     if (!window.confirm(`Delete ${transaction.note || "this entry"}? This cannot be undone.`)) return;
     setDeleting(true); setError("");
     try {
-      const response = await fetch(`/api/transactions?id=${encodeURIComponent(transaction.id)}`, { method: "DELETE" });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Could not delete the entry.");
-      await onDeleted();
+      await onDelete(transaction.id);
+      onDeleted();
     } catch (deleteError) { setError(deleteError instanceof Error ? deleteError.message : "Could not delete the entry."); }
     finally { setDeleting(false); }
   };

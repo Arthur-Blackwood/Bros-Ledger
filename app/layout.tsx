@@ -10,7 +10,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const protocol = requestHeaders.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
   const origin = `${protocol}://${host}`;
   const title = "Bro's Ledger · Personal finance";
-  const description = "A calm personal ledger for everyday life under southern skies.";
+  const description = "A local-first personal ledger that keeps your data on this device.";
   const image = `${origin}/og.png`;
   return {
     title,

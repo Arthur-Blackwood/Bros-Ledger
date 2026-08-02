@@ -162,3 +162,15 @@ button:disabled { cursor: not-allowed; }
   .add-button, .mobile-nav .mobile-add, .save-button, .save-category-button, .auth-card form > button { color: #102018; background: #83c7ac; box-shadow: 0 10px 24px rgba(0, 0, 0, .26); }
   .ledger-account { color: #bfe2d1; background: #294438; }
 }
+
+.csv-actions { display: flex; align-items: center; gap: 8px; }
+.csv-actions input { display: none; }
+.csv-error { margin: 14px 28px 0; padding: 11px 13px; border-radius: 12px; color: #a54534; background: #f9e6df; font-size: 11px; font-weight: 700; }
+.auth-card form { display: grid; gap: 12px; }
+
+@media (max-width: 720px) {
+  .csv-actions { width: 100%; flex-wrap: wrap; justify-content: flex-end; }
+  .csv-actions .csv-button { flex: 1; }
+}
+
+:root[data-theme="dark"] .csv-error { color: #ffc0ad; background: #4a2b28; }

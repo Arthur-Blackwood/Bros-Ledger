@@ -2,17 +2,10 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "bros-ledger",
   "main": "worker/index.ts",
-  "compatibility_date": "2026-08-02",
+  "compatibility_date": "2026-05-15",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
   "preview_urls": false,
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "bros-ledger",
-      "database_id": "7ae01dba-8751-4359-b49f-3bd482e3cbcf"
-    }
-  ],
   "observability": {
     "enabled": true
   }

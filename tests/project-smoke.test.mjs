@@ -29,26 +29,32 @@ test("ships the required install and social assets", async () => {
   ]);
 });
 
-test("keeps renamed browser preferences compatible with existing installations", async () => {
-  const [layout, app, auth] = await Promise.all([
+test("stores the ledger and privacy PIN on the current device", async () => {
+  const [layout, app] = await Promise.all([
     readFile(new URL("app/layout.tsx", root), "utf8"),
     readFile(new URL("app/ledger-app.tsx", root), "utf8"),
-    readFile(new URL("app/ledger-auth.ts", root), "utf8"),
   ]);
 
   assert.match(layout, /bros-ledger:theme:v1/);
   assert.match(layout, /daylight-ledger:theme:v1/);
   assert.match(app, /bros-ledger:report-chart-preferences:v1/);
   assert.match(app, /daylight-ledger:report-chart-preferences:v1/);
-  assert.match(auth, /bros_ledger_session/);
-  assert.match(auth, /daylight_session/);
+  assert.match(app, /bros-ledger:transactions:v1/);
+  assert.match(app, /bros-ledger:categories:v1/);
+  assert.match(app, /bros-ledger:privacy-pin-hash:v1/);
+  assert.doesNotMatch(app, /fetch\("\/api\//);
 });
 
-test("binds the Cloudflare Worker to the Bro's Ledger database", async () => {
+test("deploys without a shared cloud database", async () => {
   const workerConfig = await readFile(new URL("wrangler.jsonc", root), "utf8");
   assert.match(workerConfig, /"name": "bros-ledger"/);
-  assert.match(workerConfig, /"binding": "DB"/);
-  assert.match(workerConfig, /"database_name": "bros-ledger"/);
   assert.match(workerConfig, /"workers_dev": true/);
   assert.match(workerConfig, /"preview_urls": false/);
+  assert.doesNotMatch(workerConfig, /d1_databases|"binding": "DB"/);
+});
+
+test("supports the existing Bro's Ledger CSV columns", async () => {
+  const app = await readFile(new URL("app/ledger-app.tsx", root), "utf8");
+  for (const column of ["Date", "Category", "Note", "Account", "Amount"]) assert.match(app, new RegExp(`"${column}"`));
+  assert.match(app, /transactionsFromCsv/);
 });

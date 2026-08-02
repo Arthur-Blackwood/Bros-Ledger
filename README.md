@@ -1,6 +1,6 @@
 # Bro's Ledger
 
-Bro's Ledger is a private, responsive personal-finance ledger built with Next.js, vinext, and Cloudflare D1. It includes quick transaction entry, category and account editing, interactive reports, CSV export, installable PWA icons, light/dark themes, and an owner-controlled income privacy mode.
+Bro's Ledger is a private, responsive, local-first personal-finance ledger built with Next.js and vinext. Transactions, categories, preferences, and the income-privacy PIN stay in the current browser. It includes quick transaction entry, interactive reports, CSV import/export, installable PWA icons, and light/dark themes.
 
 ## Run locally
 
@@ -11,7 +11,7 @@ npm install
 npm run dev
 ```
 
-Open the local URL printed in the terminal. The local Cloudflare runtime stores its D1 data under `.wrangler/`, which is excluded from Git.
+Open the local URL printed in the terminal. Each browser profile starts with a new empty ledger and stores its own data locally.
 
 ## Verify a change
 
@@ -22,17 +22,9 @@ npm run lint
 
 ## Cloudflare deployment
 
-The production Worker needs:
-
-- a D1 database bound as `DB`
-- encrypted secrets named `OWNER_PIN`, `FAMILY_PIN`, and `SESSION_SECRET`
-- Node.js compatibility enabled
-
-`OWNER_PIN` and `FAMILY_PIN` must each be five digits. `SESSION_SECRET` should be a long random value and must never be committed to Git.
-
-The repository already includes the production D1 binding in `wrangler.jsonc`. In Cloudflare's Git integration, use:
+No database or runtime secrets are required. In Cloudflare's Git integration, use:
 
 - Build command: `npm run build`
 - Deploy command: `npx wrangler deploy`
 
-After the first deployment, add `OWNER_PIN`, `FAMILY_PIN`, and `SESSION_SECRET` under the Worker's **Settings → Variables and Secrets** page. The application creates and upgrades its ledger tables on first use.
+The free `workers.dev` deployment only serves the application files. Ledger data never leaves the user's browser. Clearing browser data removes the local ledger, so users should export CSV backups regularly.
