@@ -68,6 +68,9 @@ test("ships coordinated light and dark colour palettes", async () => {
   }
   for (const palette of ["ocean", "indigo", "plum", "terracotta"]) assert.match(styles, new RegExp(`data-palette=\\"${palette}\\"`));
   assert.match(layout, /dataset\.palette/);
+  assert.match(layout, /dataset\.palette="indigo"/);
+  assert.match(app, /typeof window === "undefined"\) return "indigo"/);
+  assert.match(app, /\? saved : "indigo"/);
   assert.match(styles, /--heat-empty:/);
   assert.match(styles, /--chart-6:/);
   assert.match(styles, /:root\[data-theme\]\[data-palette\]/);
@@ -75,6 +78,9 @@ test("ships coordinated light and dark colour palettes", async () => {
   assert.match(styles, /--mint-deep: var\(--accent\)/);
   assert.match(styles, /:root\[data-theme\]\[data-palette\] \.add-button/);
   assert.match(styles, /:root\[data-theme\]\[data-palette\] \.sidebar/);
+  assert.match(styles, /\.privacy-locked-copy \{/);
+  assert.match(styles, /\.category-picker button\.active/);
+  assert.match(styles, /\.compact-toggle\.active, \.outlier-toggle\.active/);
 });
 
 test("deploys without a shared cloud database", async () => {

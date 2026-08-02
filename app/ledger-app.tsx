@@ -141,12 +141,12 @@ const readThemePreference = (): ThemePreference => {
 };
 
 const readPalettePreference = (): PalettePreference => {
-  if (typeof window === "undefined") return "forest";
+  if (typeof window === "undefined") return "indigo";
   try {
     const saved = window.localStorage.getItem(palettePreferenceKey);
-    return saved === "ocean" || saved === "indigo" || saved === "plum" || saved === "terracotta" ? saved : "forest";
+    return saved === "forest" || saved === "ocean" || saved === "indigo" || saved === "plum" || saved === "terracotta" ? saved : "indigo";
   } catch {
-    return "forest";
+    return "indigo";
   }
 };
 
