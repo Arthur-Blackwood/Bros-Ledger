@@ -49,4 +49,6 @@ test("binds the Cloudflare Worker to the Bro's Ledger database", async () => {
   assert.match(workerConfig, /"name": "bros-ledger"/);
   assert.match(workerConfig, /"binding": "DB"/);
   assert.match(workerConfig, /"database_name": "bros-ledger"/);
+  assert.match(workerConfig, /"workers_dev": true/);
+  assert.match(workerConfig, /"preview_urls": false/);
 });
