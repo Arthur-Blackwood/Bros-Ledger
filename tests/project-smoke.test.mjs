@@ -42,7 +42,24 @@ test("stores the ledger and privacy PIN on the current device", async () => {
   assert.match(app, /bros-ledger:transactions:v1/);
   assert.match(app, /bros-ledger:categories:v1/);
   assert.match(app, /bros-ledger:privacy-pin-hash:v1/);
+  assert.match(app, /bros-ledger:palette:v1/);
   assert.doesNotMatch(app, /fetch\("\/api\//);
+});
+
+test("ships coordinated light and dark colour palettes", async () => {
+  const [layout, app, styles] = await Promise.all([
+    readFile(new URL("app/layout.tsx", root), "utf8"),
+    readFile(new URL("app/ledger-app.tsx", root), "utf8"),
+    readFile(new URL("app/globals.css", root), "utf8"),
+  ]);
+  for (const palette of ["forest", "ocean", "indigo", "plum", "terracotta"]) {
+    assert.match(app, new RegExp(`"${palette}"`));
+    assert.match(styles, new RegExp(`palette-${palette}`));
+  }
+  for (const palette of ["ocean", "indigo", "plum", "terracotta"]) assert.match(styles, new RegExp(`data-palette=\\"${palette}\\"`));
+  assert.match(layout, /dataset\.palette/);
+  assert.match(styles, /--heat-empty:/);
+  assert.match(styles, /--chart-6:/);
 });
 
 test("deploys without a shared cloud database", async () => {

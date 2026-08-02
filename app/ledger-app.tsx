@@ -27,6 +27,7 @@ type CategoryPeriod = "month" | "quarter" | "year";
 type ActivityView = "both" | "expense" | "income";
 type ActivityWeeks = 8 | 16 | 26;
 type ThemePreference = "system" | "light" | "dark";
+type PalettePreference = "forest" | "ocean" | "indigo" | "plum" | "terracotta";
 
 const localTransactionsKey = "bros-ledger:transactions:v1";
 const localCategoriesKey = "bros-ledger:categories:v1";
@@ -126,6 +127,7 @@ const transactionsFromCsv = (text: string) => {
 
 const themePreferenceKey = "bros-ledger:theme:v1";
 const legacyThemePreferenceKey = "daylight-ledger:theme:v1";
+const palettePreferenceKey = "bros-ledger:palette:v1";
 
 const readThemePreference = (): ThemePreference => {
   if (typeof window === "undefined") return "system";
@@ -135,6 +137,16 @@ const readThemePreference = (): ThemePreference => {
     return saved === "light" || saved === "dark" ? saved : "system";
   } catch {
     return "system";
+  }
+};
+
+const readPalettePreference = (): PalettePreference => {
+  if (typeof window === "undefined") return "forest";
+  try {
+    const saved = window.localStorage.getItem(palettePreferenceKey);
+    return saved === "ocean" || saved === "indigo" || saved === "plum" || saved === "terracotta" ? saved : "forest";
+  } catch {
+    return "forest";
   }
 };
 
@@ -200,7 +212,7 @@ const categoryMeta: Record<string, { emoji: string; color: string }> = {
   Other: { emoji: "✨", color: "#a8aea8" },
 };
 
-const donutPalette = ["#efc94c", "#5f99aa", "#6f9b79", "#c96745", "#9a76ab", "#4f8f81"];
+const donutPalette = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)", "var(--chart-6)"];
 const donutColor = (index: number) => donutPalette[index] ?? `hsl(${(index * 137.508) % 360} 46% 53%)`;
 
 const toDateKey = (date = new Date()) => {
@@ -269,6 +281,7 @@ export function LedgerApp() {
   const [incomeHidden, setIncomeHidden] = useState(true);
   const [privacyUnlockOpen, setPrivacyUnlockOpen] = useState(false);
   const [themePreference, setThemePreference] = useState<ThemePreference>(readThemePreference);
+  const [palettePreference, setPalettePreference] = useState<PalettePreference>(readPalettePreference);
 
   useEffect(() => {
     const systemTheme = window.matchMedia("(prefers-color-scheme: dark)");
@@ -282,9 +295,18 @@ export function LedgerApp() {
     return () => systemTheme.removeEventListener("change", applyTheme);
   }, [themePreference]);
 
+  useEffect(() => {
+    document.documentElement.dataset.palette = palettePreference;
+  }, [palettePreference]);
+
   const updateThemePreference = (preference: ThemePreference) => {
     setThemePreference(preference);
     try { window.localStorage.setItem(themePreferenceKey, preference); } catch { /* Keep the theme for this visit. */ }
+  };
+
+  const updatePalettePreference = (preference: PalettePreference) => {
+    setPalettePreference(preference);
+    try { window.localStorage.setItem(palettePreferenceKey, preference); } catch { /* Keep the palette for this visit. */ }
   };
 
   useEffect(() => {
@@ -527,7 +549,7 @@ export function LedgerApp() {
 
         {view === "transactions" && <TransactionsPanel groups={reportGroups} currency={currency} canEdit={canEdit} categoryEmoji={categoryEmoji} onEdit={setEditingTransaction} onExport={exportCsv} onImport={importCsv} onAdd={() => setDrawerOpen(true)} />}
 
-        {view === "personalization" && <PersonalizationPanel key={incomeHidden ? "income-hidden" : "income-shown"} categories={categories} incomeHidden={incomeHidden} themePreference={themePreference} onThemeChange={updateThemePreference} onReorder={saveCategoryOrder} onSave={saveCategory} onRemove={removeCategory} />}
+        {view === "personalization" && <PersonalizationPanel key={incomeHidden ? "income-hidden" : "income-shown"} categories={categories} incomeHidden={incomeHidden} themePreference={themePreference} palettePreference={palettePreference} onThemeChange={updateThemePreference} onPaletteChange={updatePalettePreference} onReorder={saveCategoryOrder} onSave={saveCategory} onRemove={removeCategory} />}
 
       </section>
 
@@ -782,7 +804,7 @@ function ReportsPanel({ transactions, selectedDate, currency, categoryEmoji, can
     <section className="explorer-card analysis-card">
       <div className="explorer-head"><div><p>Transactions explorer</p><h2>{money(explorerTotal, currency)}</h2><span>{explorerPeriodMeta.label} · {series.length} {explorerGroup === "day" ? "days" : explorerGroup === "month" ? "months" : "years"} included</span></div><button className="share-report" onClick={shareExplorer} aria-label="Share report summary">{shareStatus || "↗"}</button></div>
       {series.length ? <>
-        <div className="trend-chart" aria-label={`${effectiveExplorerType} grouped by ${explorerGroup}`}>
+        <div className={`trend-chart ${effectiveExplorerType}`} aria-label={`${effectiveExplorerType} grouped by ${explorerGroup}`}>
           <div className="trend-y-labels"><span>{money(chartMax, currency)}</span><span>{money(chartMax / 2, currency)}</span><span>{money(0, currency)}</span></div>
           <div className="trend-bars">{series.map((item) => <button type="button" className={`trend-bar-wrap ${selectedExplorerKey === item.key ? "selected" : ""}`} key={item.key} title={`${explorerLabel(item.key, explorerGroup)}: ${money(item.value, currency)}`} aria-label={`Show ${effectiveExplorerType} details for ${explorerLabel(item.key, explorerGroup)}: ${money(item.value, currency)}`} aria-pressed={selectedExplorerKey === item.key} onClick={() => setSelectedExplorerKey((current) => current === item.key ? null : item.key)}><i style={{ height: `${Math.max(3, item.value / chartMax * 100)}%` }} /></button>)}</div>
           <div className="trend-x-labels">{tickIndexes.map((index) => <span key={series[index].key}>{explorerLabel(series[index].key, explorerGroup)}</span>)}</div>
@@ -976,7 +998,7 @@ function IncomePrivacyUnlock({ onClose, onUnlocked }: { onClose: () => void; onU
   </div>;
 }
 
-function PersonalizationPanel({ categories, incomeHidden, themePreference, onThemeChange, onReorder, onSave, onRemove }: { categories: LedgerCategory[]; incomeHidden: boolean; themePreference: ThemePreference; onThemeChange: (preference: ThemePreference) => void; onReorder: (categories: LedgerCategory[]) => Promise<void>; onSave: (draft: Omit<LedgerCategory, "id">, editing: LedgerCategory | null) => Promise<void>; onRemove: (id: string) => Promise<void> }) {
+function PersonalizationPanel({ categories, incomeHidden, themePreference, palettePreference, onThemeChange, onPaletteChange, onReorder, onSave, onRemove }: { categories: LedgerCategory[]; incomeHidden: boolean; themePreference: ThemePreference; palettePreference: PalettePreference; onThemeChange: (preference: ThemePreference) => void; onPaletteChange: (preference: PalettePreference) => void; onReorder: (categories: LedgerCategory[]) => Promise<void>; onSave: (draft: Omit<LedgerCategory, "id">, editing: LedgerCategory | null) => Promise<void>; onRemove: (id: string) => Promise<void> }) {
   const [editing, setEditing] = useState<LedgerCategory | null>(null);
   const [orderedCategories, setOrderedCategories] = useState(categories);
   const orderedCategoriesRef = useRef(categories);
@@ -1124,9 +1146,14 @@ function PersonalizationPanel({ categories, incomeHidden, themePreference, onThe
   return <div className="personalization-grid">
     <section className="theme-control-card">
       <div className="section-heading"><div><p>Appearance</p><h2>Theme</h2></div><span>Saved on this device</span></div>
-      <p className="theme-control-copy">Choose a fixed appearance or let Bro&apos;s Ledger follow your system setting.</p>
+      <p className="theme-control-copy">Choose how light and dark mode behave, then select a coordinated colour system for every surface and chart.</p>
+      <h3 className="theme-subheading">Mode</h3>
       <div className="theme-options" role="radiogroup" aria-label="Application theme">
         {(["system", "light", "dark"] as ThemePreference[]).map((preference) => <button type="button" role="radio" aria-checked={themePreference === preference} className={themePreference === preference ? "active" : ""} key={preference} onClick={() => onThemeChange(preference)}><span aria-hidden="true">{preference === "system" ? "◐" : preference === "light" ? "☀" : "◑"}</span><strong>{preference[0].toUpperCase() + preference.slice(1)}</strong><small>{preference === "system" ? "Follow this device" : preference === "light" ? "Always light" : "Always dark"}</small></button>)}
+      </div>
+      <h3 className="theme-subheading palette-heading">Colour palette</h3>
+      <div className="palette-options" role="radiogroup" aria-label="Application colour palette">
+        {(["forest", "ocean", "indigo", "plum", "terracotta"] as PalettePreference[]).map((preference) => <button type="button" role="radio" aria-checked={palettePreference === preference} className={`palette-option palette-${preference} ${palettePreference === preference ? "active" : ""}`} key={preference} onClick={() => onPaletteChange(preference)}><span className="palette-preview" aria-hidden="true"><i /><i /><i /></span><strong>{preference[0].toUpperCase() + preference.slice(1)}</strong><small>{preference === "forest" ? "Sage and eucalyptus" : preference === "ocean" ? "Navy and sea glass" : preference === "indigo" ? "Ink and periwinkle" : preference === "plum" ? "Aubergine and rose" : "Clay and warm sand"}</small></button>)}
       </div>
     </section>
     <section className="category-library-card">
