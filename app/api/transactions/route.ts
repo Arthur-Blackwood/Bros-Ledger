@@ -134,7 +134,11 @@ export async function POST(request: NextRequest) {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .bind(item.id, item.occurredAt, item.type, item.amountCents, item.currency, item.merchant, item.category, item.account, item.note, JSON.stringify(item.tags), item.source)));
     return NextResponse.json({
-      transactions: transactions.map(({ merchant: _merchant, ...item }) => item),
+      transactions: transactions.map((item) => {
+        const publicTransaction = { ...item };
+        Reflect.deleteProperty(publicTransaction, "merchant");
+        return publicTransaction;
+      }),
       count: transactions.length,
     }, { status: 201 });
   } catch (error) {

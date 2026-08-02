@@ -2,14 +2,14 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import "./globals.css";
 
-const themeInitScript = `(function(){try{var key="daylight-ledger:theme:v1";var value=localStorage.getItem(key);var preference=value==="light"||value==="dark"?value:"system";var resolved=preference==="system"?(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"):preference;document.documentElement.dataset.theme=resolved;document.documentElement.dataset.themePreference=preference;}catch(e){document.documentElement.dataset.theme=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";}})();`;
+const themeInitScript = `(function(){try{var key="bros-ledger:theme:v1";var legacyKey="daylight-ledger:theme:v1";var value=localStorage.getItem(key)||localStorage.getItem(legacyKey);if(value)localStorage.setItem(key,value);var preference=value==="light"||value==="dark"?value:"system";var resolved=preference==="system"?(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"):preference;document.documentElement.dataset.theme=resolved;document.documentElement.dataset.themePreference=preference;}catch(e){document.documentElement.dataset.theme=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";}})();`;
 
 export async function generateMetadata(): Promise<Metadata> {
   const requestHeaders = await headers();
   const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host") ?? "localhost:3000";
   const protocol = requestHeaders.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
   const origin = `${protocol}://${host}`;
-  const title = "Daylight Ledger · Personal finance";
+  const title = "Bro's Ledger · Personal finance";
   const description = "A calm personal ledger for everyday life under southern skies.";
   const image = `${origin}/og.png`;
   return {
@@ -21,7 +21,7 @@ export async function generateMetadata(): Promise<Metadata> {
       shortcut: "/favicon.svg",
       apple: "/icon-192.png",
     },
-    openGraph: { title, description, type: "website", images: [{ url: image, width: 2184, height: 941, alt: "Daylight Ledger" }] },
+    openGraph: { title, description, type: "website", images: [{ url: image, width: 1672, height: 941, alt: "Bro's Ledger" }] },
     twitter: { card: "summary_large_image", title, description, images: [image] },
   };
 }

@@ -16,7 +16,8 @@ type LedgerEnv = typeof env & {
   SESSION_SECRET?: string;
 };
 
-export const SESSION_COOKIE = "daylight_session";
+export const SESSION_COOKIE = "bros_ledger_session";
+export const LEGACY_SESSION_COOKIE = "daylight_session";
 export const SESSION_MAX_AGE = 60 * 60 * 24 * 7;
 
 const encoder = new TextEncoder();
@@ -88,7 +89,7 @@ export async function createSessionToken(role: LedgerRole) {
 
 export async function readSession(request: NextRequest): Promise<SessionPayload | null> {
   try {
-    const token = request.cookies.get(SESSION_COOKIE)?.value;
+    const token = request.cookies.get(SESSION_COOKIE)?.value ?? request.cookies.get(LEGACY_SESSION_COOKIE)?.value;
     if (!token) return null;
     const [encodedPayload, encodedSignature, extra] = token.split(".");
     if (!encodedPayload || !encodedSignature || extra) return null;

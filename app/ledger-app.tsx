@@ -27,12 +27,14 @@ type ActivityView = "both" | "expense" | "income";
 type ActivityWeeks = 8 | 16 | 26;
 type ThemePreference = "system" | "light" | "dark";
 
-const themePreferenceKey = "daylight-ledger:theme:v1";
+const themePreferenceKey = "bros-ledger:theme:v1";
+const legacyThemePreferenceKey = "daylight-ledger:theme:v1";
 
 const readThemePreference = (): ThemePreference => {
   if (typeof window === "undefined") return "system";
   try {
-    const saved = window.localStorage.getItem(themePreferenceKey);
+    const saved = window.localStorage.getItem(themePreferenceKey) ?? window.localStorage.getItem(legacyThemePreferenceKey);
+    if (saved) window.localStorage.setItem(themePreferenceKey, saved);
     return saved === "light" || saved === "dark" ? saved : "system";
   } catch {
     return "system";
@@ -52,7 +54,8 @@ type ReportChartPreferences = {
   activityFilterOutliers: boolean;
 };
 
-const reportChartPreferencesKey = "daylight-ledger:report-chart-preferences:v1";
+const reportChartPreferencesKey = "bros-ledger:report-chart-preferences:v1";
+const legacyReportChartPreferencesKey = "daylight-ledger:report-chart-preferences:v1";
 const defaultReportChartPreferences: ReportChartPreferences = {
   explorerType: "expense",
   explorerGroup: "day",
@@ -69,7 +72,9 @@ const defaultReportChartPreferences: ReportChartPreferences = {
 const readReportChartPreferences = (): ReportChartPreferences => {
   if (typeof window === "undefined") return defaultReportChartPreferences;
   try {
-    const value = JSON.parse(window.localStorage.getItem(reportChartPreferencesKey) ?? "{}") as Partial<ReportChartPreferences>;
+    const stored = window.localStorage.getItem(reportChartPreferencesKey) ?? window.localStorage.getItem(legacyReportChartPreferencesKey);
+    if (stored) window.localStorage.setItem(reportChartPreferencesKey, stored);
+    const value = JSON.parse(stored ?? "{}") as Partial<ReportChartPreferences>;
     return {
       explorerType: value.explorerType === "income" ? "income" : "expense",
       explorerGroup: value.explorerGroup === "month" || value.explorerGroup === "year" ? value.explorerGroup : "day",
@@ -301,7 +306,7 @@ export function LedgerApp() {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = incomeHidden ? `daylight-ledger-expenses-only-${today}.csv` : `daylight-ledger-${today}.csv`;
+    anchor.download = incomeHidden ? `bros-ledger-expenses-only-${today}.csv` : `bros-ledger-${today}.csv`;
     anchor.click();
     URL.revokeObjectURL(url);
     setNotice(incomeHidden ? "Expense-only CSV exported. Income remains hidden." : "CSV exported.");
@@ -348,7 +353,7 @@ export function LedgerApp() {
     <main className="app-shell">
       <aside className="sidebar">
         <button className="brand" onClick={() => setView("overview")} aria-label="Go to overview">
-          <span className="brand-mark">D</span><span>Daylight Ledger</span>
+          <span className="brand-mark">B</span><span>Bro&apos;s Ledger</span>
         </button>
         <nav className="main-nav" aria-label="Main navigation">
           <NavItem active={view === "overview"} icon="⌂" label="Today" onClick={() => setView("overview")} />
@@ -628,7 +633,7 @@ function ReportsPanel({ transactions, selectedDate, currency, categoryEmoji, can
 
   const shareExplorer = async () => {
     const text = `${effectiveExplorerType === "expense" ? "Expenditure" : "Income"} total for ${explorerPeriodMeta.label.toLowerCase()}: ${money(explorerTotal, currency)}. Highest ${money(explorerHighest, currency)}, lowest ${money(explorerLowest, currency)}, average ${money(explorerAverage, currency)}.`;
-    if (navigator.share) await navigator.share({ title: "Daylight Ledger report", text });
+    if (navigator.share) await navigator.share({ title: "Bro's Ledger report", text });
     else await navigator.clipboard.writeText(text);
     setShareStatus(navigator.share ? "Shared" : "Copied");
     window.setTimeout(() => setShareStatus(""), 1800);
@@ -807,8 +812,8 @@ function PinGate({ onAuthenticated }: { onAuthenticated: (role: LedgerRole) => v
 
   return <main className="auth-shell">
     <section className="auth-card">
-      <div className="auth-mark">D</div>
-      <p className="eyebrow">Daylight Ledger</p>
+      <div className="auth-mark">B</div>
+      <p className="eyebrow">Bro&apos;s Ledger</p>
       <h1>Your family ledger,<br />kept private.</h1>
       <p className="auth-copy">Enter your five-digit PIN to continue. Your access level is selected automatically.</p>
       <form onSubmit={submit}>
@@ -1039,7 +1044,7 @@ function PersonalizationPanel({ categories, incomeHidden, themePreference, onThe
   return <div className="personalization-grid">
     <section className="theme-control-card">
       <div className="section-heading"><div><p>Appearance</p><h2>Theme</h2></div><span>Saved on this device</span></div>
-      <p className="theme-control-copy">Choose a fixed appearance or let Daylight Ledger follow your system setting.</p>
+      <p className="theme-control-copy">Choose a fixed appearance or let Bro&apos;s Ledger follow your system setting.</p>
       <div className="theme-options" role="radiogroup" aria-label="Application theme">
         {(["system", "light", "dark"] as ThemePreference[]).map((preference) => <button type="button" role="radio" aria-checked={themePreference === preference} className={themePreference === preference ? "active" : ""} key={preference} onClick={() => onThemeChange(preference)}><span aria-hidden="true">{preference === "system" ? "◐" : preference === "light" ? "☀" : "◑"}</span><strong>{preference[0].toUpperCase() + preference.slice(1)}</strong><small>{preference === "system" ? "Follow this device" : preference === "light" ? "Always light" : "Always dark"}</small></button>)}
       </div>

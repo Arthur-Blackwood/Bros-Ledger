@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Daylight Ledger",
-    short_name: "Daylight Ledger",
+    name: "Bro's Ledger",
+    short_name: "Bro's Ledger",
     description: "A calm personal ledger for everyday life under southern skies.",
     display: "standalone",
     background_color: "#FFF9F0",
