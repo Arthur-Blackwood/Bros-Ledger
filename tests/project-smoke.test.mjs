@@ -29,6 +29,16 @@ test("ships the required install and social assets", async () => {
   ]);
 });
 
+test("uses a neutral installed-app title bar", async () => {
+  const [layout, manifest] = await Promise.all([
+    readFile(new URL("app/layout.tsx", root), "utf8"),
+    readFile(new URL("app/manifest.ts", root), "utf8"),
+  ]);
+  assert.match(layout, /name="theme-color" content="#242629"/);
+  assert.match(layout, /apple-mobile-web-app-status-bar-style/);
+  assert.match(manifest, /theme_color: "#242629"/);
+});
+
 test("stores the ledger and privacy PIN on the current device", async () => {
   const [layout, app] = await Promise.all([
     readFile(new URL("app/layout.tsx", root), "utf8"),
@@ -60,6 +70,11 @@ test("ships coordinated light and dark colour palettes", async () => {
   assert.match(layout, /dataset\.palette/);
   assert.match(styles, /--heat-empty:/);
   assert.match(styles, /--chart-6:/);
+  assert.match(styles, /:root\[data-theme\]\[data-palette\]/);
+  assert.match(styles, /--cream: var\(--app-bg\)/);
+  assert.match(styles, /--mint-deep: var\(--accent\)/);
+  assert.match(styles, /:root\[data-theme\]\[data-palette\] \.add-button/);
+  assert.match(styles, /:root\[data-theme\]\[data-palette\] \.sidebar/);
 });
 
 test("deploys without a shared cloud database", async () => {

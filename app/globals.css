@@ -291,53 +291,72 @@ button:disabled { cursor: not-allowed; }
   --bar-selected-start: #f0c0a7; --bar-selected-end: #b66d4d;
 }
 
-:root body { background: radial-gradient(circle at 94% 3%, var(--ambient-1), transparent 22rem), radial-gradient(circle at 73% 92%, var(--ambient-2), transparent 28rem), var(--app-bg); }
-:root .sidebar { background: var(--sidebar-bg); border-color: color-mix(in srgb, var(--app-text) 10%, transparent); }
-:root .main-nav button { color: var(--app-muted); }
-:root .main-nav button.active { color: var(--app-text); background: var(--accent-soft); }
-:root .brand-mark, :root .auth-mark { color: var(--accent-contrast); background: var(--accent); }
-:root .add-button, :root .mobile-nav .mobile-add, :root .save-button, :root .save-category-button, :root .auth-card form > button, :root .privacy-card form > button { color: var(--accent-contrast); background: var(--accent); box-shadow: 0 10px 24px color-mix(in srgb, var(--accent) 24%, transparent); }
-:root .balance-card { color: var(--hero-text); background: linear-gradient(135deg, var(--hero-start) 0%, var(--hero-mid) 54%, var(--hero-end) 100%); }
-:root .balance-head, :root .balance-meta { color: var(--hero-muted); }
-:root .balance-meta b { color: var(--hero-text); }
-:root .daily-note-card { background: var(--note-bg); }
-:root .note-top, :root .daily-note-card > p { color: var(--note-text); }
-:root .note-top button, :root .spark { color: var(--note-accent); }
-:root .spark { background: color-mix(in srgb, var(--note-accent) 20%, var(--note-bg)); }
-:root .note-tags span { color: var(--note-text); background: var(--note-chip); }
-:root .access-badge.owner, :root .personalize-shortcut, :root .csv-button, :root .category-reset, :root .share-report { color: var(--accent); background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 35%, var(--app-line)); }
-:root .segmented-control, :root .type-toggle, :root .category-type-toggle { background: var(--surface-soft); }
-:root .segmented-control button, :root .outlier-toggle, :root .compact-toggle { color: var(--app-muted); }
-:root .segmented-control button.active, :root .category-type-toggle button.active, :root .compact-toggle.active { color: var(--accent-contrast); background: var(--accent); border-color: var(--accent); box-shadow: 0 5px 12px color-mix(in srgb, var(--accent) 20%, transparent); }
-:root .outlier-toggle { background: var(--surface-alt); border-color: var(--app-line); }
-:root .outlier-toggle.active { color: var(--accent); background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 55%, var(--app-line)); }
-:root .category-control-summary, :root .show-transactions, :root .info-callout { background: var(--accent-soft); }
-:root .info-callout { color: var(--app-muted); border-color: color-mix(in srgb, var(--accent) 30%, var(--app-line)); }
-:root .theme-options button, :root .category-library-item, :root .ledger-entry-row { color: var(--app-muted); background: var(--surface-soft); border-color: var(--app-line); }
-:root .theme-options button > span, :root .category-edit-button > span { color: var(--app-text); background: var(--surface); }
-:root .theme-options button.active, :root .category-library-item:hover, :root .category-library-item.active { color: var(--accent); background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 55%, var(--app-line)); }
-:root .theme-options button.active > span { color: var(--accent-contrast); background: var(--accent); }
-:root .category-group { background: color-mix(in srgb, var(--surface-alt) 70%, transparent); border-color: var(--app-line); }
-:root .ledger-entry-row:nth-child(odd) { background: var(--surface-alt); }
-:root .ledger-entry-row:hover { background: var(--surface-hover); }
-:root .ledger-note { color: var(--app-muted); }
-:root .ledger-account { color: var(--accent); background: var(--accent-soft); }
-:root .activity-grid { background: var(--heat-grid); }
-:root .activity-cell, :root .activity-cell.split, :root .activity-legend i { background: var(--heat-empty); }
-:root .activity-cell.expense.level-1, :root .activity-half.expense.level-1, :root .activity-legend i.expense.level-1 { background: var(--expense-1); }
-:root .activity-cell.expense.level-2, :root .activity-half.expense.level-2, :root .activity-legend i.expense.level-2 { background: var(--expense-2); }
-:root .activity-cell.expense.level-3, :root .activity-half.expense.level-3, :root .activity-legend i.expense.level-3 { background: var(--expense-3); }
-:root .activity-cell.expense.level-4, :root .activity-half.expense.level-4, :root .activity-legend i.expense.level-4 { background: var(--expense-4); }
-:root .activity-cell.income.level-1, :root .activity-half.income.level-1, :root .activity-legend i.income.level-1 { background: var(--income-1); }
-:root .activity-cell.income.level-2, :root .activity-half.income.level-2, :root .activity-legend i.income.level-2 { background: var(--income-2); }
-:root .activity-cell.income.level-3, :root .activity-half.income.level-3, :root .activity-legend i.income.level-3 { background: var(--income-3); }
-:root .activity-cell.income.level-4, :root .activity-half.income.level-4, :root .activity-legend i.income.level-4 { background: var(--income-4); }
+/*
+ * Keep legacy component tokens connected to the selected palette in both
+ * colour modes. The older dark-mode block above has the same selector weight
+ * as a palette, so without this final bridge it can restore Forest colours
+ * after a user selects another palette.
+ */
+:root[data-theme][data-palette] {
+  --cream: var(--app-bg);
+  --paper: var(--surface);
+  --ink: var(--app-text);
+  --muted: var(--app-muted);
+  --line: var(--app-line);
+  --mint: var(--accent-pale);
+  --mint-deep: var(--accent);
+  --coral: var(--expense-3);
+  --butter: var(--chart-1);
+  --ocean: var(--chart-2);
+}
+
+:root[data-theme][data-palette] body { background: radial-gradient(circle at 94% 3%, var(--ambient-1), transparent 22rem), radial-gradient(circle at 73% 92%, var(--ambient-2), transparent 28rem), var(--app-bg); }
+:root[data-theme][data-palette] .sidebar { background: var(--sidebar-bg); border-color: color-mix(in srgb, var(--app-text) 10%, transparent); }
+:root[data-theme][data-palette] .main-nav button { color: var(--app-muted); }
+:root[data-theme][data-palette] .main-nav button.active { color: var(--app-text); background: var(--accent-soft); }
+:root[data-theme][data-palette] .brand-mark, :root[data-theme][data-palette] .auth-mark { color: var(--accent-contrast); background: var(--accent); }
+:root[data-theme][data-palette] .add-button, :root[data-theme][data-palette] .mobile-nav .mobile-add, :root[data-theme][data-palette] .save-button, :root[data-theme][data-palette] .save-category-button, :root[data-theme][data-palette] .auth-card form > button, :root[data-theme][data-palette] .privacy-card form > button { color: var(--accent-contrast); background: var(--accent); box-shadow: 0 10px 24px color-mix(in srgb, var(--accent) 24%, transparent); }
+:root[data-theme][data-palette] .balance-card { color: var(--hero-text); background: linear-gradient(135deg, var(--hero-start) 0%, var(--hero-mid) 54%, var(--hero-end) 100%); }
+:root[data-theme][data-palette] .balance-head, :root[data-theme][data-palette] .balance-meta { color: var(--hero-muted); }
+:root[data-theme][data-palette] .balance-meta b { color: var(--hero-text); }
+:root[data-theme][data-palette] .daily-note-card { background: var(--note-bg); }
+:root[data-theme][data-palette] .note-top, :root[data-theme][data-palette] .daily-note-card > p { color: var(--note-text); }
+:root[data-theme][data-palette] .note-top button, :root[data-theme][data-palette] .spark { color: var(--note-accent); }
+:root[data-theme][data-palette] .spark { background: color-mix(in srgb, var(--note-accent) 20%, var(--note-bg)); }
+:root[data-theme][data-palette] .note-tags span { color: var(--note-text); background: var(--note-chip); }
+:root[data-theme][data-palette] .access-badge.owner, :root[data-theme][data-palette] .personalize-shortcut, :root[data-theme][data-palette] .csv-button, :root[data-theme][data-palette] .category-reset, :root[data-theme][data-palette] .share-report { color: var(--accent); background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 35%, var(--app-line)); }
+:root[data-theme][data-palette] .segmented-control, :root[data-theme][data-palette] .type-toggle, :root[data-theme][data-palette] .category-type-toggle { background: var(--surface-soft); }
+:root[data-theme][data-palette] .segmented-control button, :root[data-theme][data-palette] .outlier-toggle, :root[data-theme][data-palette] .compact-toggle { color: var(--app-muted); }
+:root[data-theme][data-palette] .segmented-control button.active, :root[data-theme][data-palette] .category-type-toggle button.active, :root[data-theme][data-palette] .compact-toggle.active { color: var(--accent-contrast); background: var(--accent); border-color: var(--accent); box-shadow: 0 5px 12px color-mix(in srgb, var(--accent) 20%, transparent); }
+:root[data-theme][data-palette] .outlier-toggle { background: var(--surface-alt); border-color: var(--app-line); }
+:root[data-theme][data-palette] .outlier-toggle.active { color: var(--accent); background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 55%, var(--app-line)); }
+:root[data-theme][data-palette] .category-control-summary, :root[data-theme][data-palette] .show-transactions, :root[data-theme][data-palette] .info-callout { background: var(--accent-soft); }
+:root[data-theme][data-palette] .info-callout { color: var(--app-muted); border-color: color-mix(in srgb, var(--accent) 30%, var(--app-line)); }
+:root[data-theme][data-palette] .theme-options button, :root[data-theme][data-palette] .category-library-item, :root[data-theme][data-palette] .ledger-entry-row { color: var(--app-muted); background: var(--surface-soft); border-color: var(--app-line); }
+:root[data-theme][data-palette] .theme-options button > span, :root[data-theme][data-palette] .category-edit-button > span { color: var(--app-text); background: var(--surface); }
+:root[data-theme][data-palette] .theme-options button.active, :root[data-theme][data-palette] .category-library-item:hover, :root[data-theme][data-palette] .category-library-item.active { color: var(--accent); background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 55%, var(--app-line)); }
+:root[data-theme][data-palette] .theme-options button.active > span { color: var(--accent-contrast); background: var(--accent); }
+:root[data-theme][data-palette] .category-group { background: color-mix(in srgb, var(--surface-alt) 70%, transparent); border-color: var(--app-line); }
+:root[data-theme][data-palette] .ledger-entry-row:nth-child(odd) { background: var(--surface-alt); }
+:root[data-theme][data-palette] .ledger-entry-row:hover { background: var(--surface-hover); }
+:root[data-theme][data-palette] .ledger-note { color: var(--app-muted); }
+:root[data-theme][data-palette] .ledger-account { color: var(--accent); background: var(--accent-soft); }
+:root[data-theme][data-palette] .activity-grid { background: var(--heat-grid); }
+:root[data-theme][data-palette] .activity-cell, :root[data-theme][data-palette] .activity-cell.split, :root[data-theme][data-palette] .activity-legend i { background: var(--heat-empty); }
+:root[data-theme][data-palette] .activity-cell.expense.level-1, :root[data-theme][data-palette] .activity-half.expense.level-1, :root[data-theme][data-palette] .activity-legend i.expense.level-1 { background: var(--expense-1); }
+:root[data-theme][data-palette] .activity-cell.expense.level-2, :root[data-theme][data-palette] .activity-half.expense.level-2, :root[data-theme][data-palette] .activity-legend i.expense.level-2 { background: var(--expense-2); }
+:root[data-theme][data-palette] .activity-cell.expense.level-3, :root[data-theme][data-palette] .activity-half.expense.level-3, :root[data-theme][data-palette] .activity-legend i.expense.level-3 { background: var(--expense-3); }
+:root[data-theme][data-palette] .activity-cell.expense.level-4, :root[data-theme][data-palette] .activity-half.expense.level-4, :root[data-theme][data-palette] .activity-legend i.expense.level-4 { background: var(--expense-4); }
+:root[data-theme][data-palette] .activity-cell.income.level-1, :root[data-theme][data-palette] .activity-half.income.level-1, :root[data-theme][data-palette] .activity-legend i.income.level-1 { background: var(--income-1); }
+:root[data-theme][data-palette] .activity-cell.income.level-2, :root[data-theme][data-palette] .activity-half.income.level-2, :root[data-theme][data-palette] .activity-legend i.income.level-2 { background: var(--income-2); }
+:root[data-theme][data-palette] .activity-cell.income.level-3, :root[data-theme][data-palette] .activity-half.income.level-3, :root[data-theme][data-palette] .activity-legend i.income.level-3 { background: var(--income-3); }
+:root[data-theme][data-palette] .activity-cell.income.level-4, :root[data-theme][data-palette] .activity-half.income.level-4, :root[data-theme][data-palette] .activity-legend i.income.level-4 { background: var(--income-4); }
 :root[data-theme="dark"] .activity-cell:not(.expense):not(.income), :root[data-theme="dark"] .activity-cell.split, :root[data-theme="dark"] .activity-legend i:not(.expense):not(.income) { background: var(--heat-empty); }
-:root .activity-cell.selected { box-shadow: 0 0 0 3px var(--surface), 0 0 0 6px var(--accent); }
-:root .trend-chart.expense .trend-bar-wrap i { background: linear-gradient(180deg, var(--bar-exp-start), var(--bar-exp-end)); }
-:root .trend-chart.income .trend-bar-wrap i { background: linear-gradient(180deg, var(--bar-income-start), var(--bar-income-end)); }
-:root .trend-bar-wrap.selected i, :root .trend-chart.expense .trend-bar-wrap.selected i, :root .trend-chart.income .trend-bar-wrap.selected i { background: linear-gradient(180deg, var(--bar-selected-start), var(--bar-selected-end)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent); }
-:root .mobile-nav { background: color-mix(in srgb, var(--surface) 90%, transparent); border-color: color-mix(in srgb, var(--app-text) 12%, transparent); }
+:root[data-theme][data-palette] .activity-cell.selected { box-shadow: 0 0 0 3px var(--surface), 0 0 0 6px var(--accent); }
+:root[data-theme][data-palette] .trend-chart.expense .trend-bar-wrap i { background: linear-gradient(180deg, var(--bar-exp-start), var(--bar-exp-end)); }
+:root[data-theme][data-palette] .trend-chart.income .trend-bar-wrap i { background: linear-gradient(180deg, var(--bar-income-start), var(--bar-income-end)); }
+:root[data-theme][data-palette] .trend-bar-wrap.selected i, :root[data-theme][data-palette] .trend-chart.expense .trend-bar-wrap.selected i, :root[data-theme][data-palette] .trend-chart.income .trend-bar-wrap.selected i { background: linear-gradient(180deg, var(--bar-selected-start), var(--bar-selected-end)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent); }
+:root[data-theme][data-palette] .mobile-nav { background: color-mix(in srgb, var(--surface) 90%, transparent); border-color: color-mix(in srgb, var(--app-text) 12%, transparent); }
 
 .theme-subheading { margin: 18px 0 9px; color: var(--app-muted); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; }
 .palette-heading { margin-top: 23px; }
