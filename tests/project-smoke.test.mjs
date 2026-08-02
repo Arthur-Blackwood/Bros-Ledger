@@ -43,3 +43,10 @@ test("keeps renamed browser preferences compatible with existing installations",
   assert.match(auth, /bros_ledger_session/);
   assert.match(auth, /daylight_session/);
 });
+
+test("binds the Cloudflare Worker to the Bro's Ledger database", async () => {
+  const workerConfig = await readFile(new URL("wrangler.jsonc", root), "utf8");
+  assert.match(workerConfig, /"name": "bros-ledger"/);
+  assert.match(workerConfig, /"binding": "DB"/);
+  assert.match(workerConfig, /"database_name": "bros-ledger"/);
+});

@@ -30,4 +30,9 @@ The production Worker needs:
 
 `OWNER_PIN` and `FAMILY_PIN` must each be five digits. `SESSION_SECRET` should be a long random value and must never be committed to Git.
 
-The application creates and upgrades its ledger tables on first use. Cloudflare's Git integration can deploy this repository after its Worker configuration and D1 database ID have been added.
+The repository already includes the production D1 binding in `wrangler.jsonc`. In Cloudflare's Git integration, use:
+
+- Build command: `npm run build`
+- Deploy command: `npx wrangler deploy`
+
+After the first deployment, add `OWNER_PIN`, `FAMILY_PIN`, and `SESSION_SECRET` under the Worker's **Settings → Variables and Secrets** page. The application creates and upgrades its ledger tables on first use.
