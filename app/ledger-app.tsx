@@ -35,9 +35,10 @@ const privacyPinHashKey = "bros-ledger:privacy-pin-hash:v1";
 const privacyPinSaltKey = "bros-ledger:privacy-pin-salt:v1";
 
 const starterCategoryTemplates: Array<[string, string, CategoryType]> = [
-  ["Food", "🍜", "expense"], ["Transport", "🚆", "expense"], ["Shopping", "🛍️", "expense"],
-  ["Home", "🏠", "expense"], ["Fun", "🎬", "expense"], ["Health", "🌿", "expense"],
-  ["Other", "✨", "expense"], ["Income", "💰", "income"],
+  ["Shopping", "🛍️", "expense"], ["Health", "💪", "expense"], ["Subscription", "🔔", "expense"],
+  ["Electronics", "📱", "expense"], ["Dine", "🍜", "expense"], ["Education", "📖", "expense"],
+  ["Transport", "🚆", "expense"], ["Fun", "🎬", "expense"], ["Other", "⭐", "expense"],
+  ["Income", "💵", "income"], ["Overseas", "💸", "income"],
 ];
 
 const saveLocalTransactions = (transactions: Transaction[]) => window.localStorage.setItem(localTransactionsKey, JSON.stringify(transactions));
@@ -142,12 +143,12 @@ const readThemePreference = (): ThemePreference => {
 };
 
 const readPalettePreference = (): PalettePreference => {
-  if (typeof window === "undefined") return "indigo";
+  if (typeof window === "undefined") return "forest";
   try {
     const saved = window.localStorage.getItem(palettePreferenceKey);
-    return saved === "forest" || saved === "ocean" || saved === "indigo" || saved === "plum" || saved === "terracotta" ? saved : "indigo";
+    return saved === "forest" || saved === "ocean" || saved === "indigo" || saved === "plum" || saved === "terracotta" ? saved : "forest";
   } catch {
-    return "indigo";
+    return "forest";
   }
 };
 
@@ -208,9 +209,14 @@ const categoryMeta: Record<string, { emoji: string; color: string }> = {
   Shopping: { emoji: "🛍️", color: "#efc94c" },
   Home: { emoji: "🏠", color: "#8ba9a0" },
   Fun: { emoji: "🎬", color: "#b89082" },
-  Health: { emoji: "🌿", color: "#6f9b79" },
-  Income: { emoji: "💰", color: "#2f6f62" },
-  Other: { emoji: "✨", color: "#a8aea8" },
+  Health: { emoji: "💪", color: "#6f9b79" },
+  Subscription: { emoji: "🔔", color: "#b89082" },
+  Electronics: { emoji: "📱", color: "#5f99aa" },
+  Dine: { emoji: "🍜", color: "#c96745" },
+  Education: { emoji: "📖", color: "#8ba9a0" },
+  Income: { emoji: "💵", color: "#2f6f62" },
+  Overseas: { emoji: "💸", color: "#6f9b79" },
+  Other: { emoji: "⭐", color: "#a8aea8" },
 };
 
 const donutPalette = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)", "var(--chart-6)"];

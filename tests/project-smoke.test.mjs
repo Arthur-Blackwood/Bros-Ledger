@@ -17,7 +17,9 @@ test("uses the Bro's Ledger brand across install and page metadata", async () =>
     assert.match(source, /Bro(?:'|&apos;)s Ledger/);
   }
   assert.match(app, /className="brand-mark">B</);
-  assert.match(favicon, />B<\/text>/);
+  assert.match(favicon, /prefers-color-scheme: dark/);
+  assert.match(favicon, /class="face"/);
+  assert.match(manifest, /favicon\.svg/);
 });
 
 test("ships the required install and social assets", async () => {
@@ -68,9 +70,10 @@ test("ships coordinated light and dark colour palettes", async () => {
   }
   for (const palette of ["ocean", "indigo", "plum", "terracotta"]) assert.match(styles, new RegExp(`data-palette=\\"${palette}\\"`));
   assert.match(layout, /dataset\.palette/);
-  assert.match(layout, /dataset\.palette="indigo"/);
-  assert.match(app, /typeof window === "undefined"\) return "indigo"/);
-  assert.match(app, /\? saved : "indigo"/);
+  assert.match(layout, /dataset\.palette="forest"/);
+  assert.match(app, /typeof window === "undefined"\) return "forest"/);
+  assert.match(app, /\? saved : "forest"/);
+  for (const category of ["Shopping", "Health", "Subscription", "Electronics", "Dine", "Education", "Transport", "Fun", "Other", "Income", "Overseas"]) assert.match(app, new RegExp(`\\["${category}"`));
   assert.match(styles, /--heat-empty:/);
   assert.match(styles, /--chart-6:/);
   assert.match(styles, /:root\[data-theme\]\[data-palette\]/);
