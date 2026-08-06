@@ -429,3 +429,19 @@ button:disabled { cursor: not-allowed; }
 
 @media (max-width: 900px) { .palette-options { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 680px) { .palette-options { grid-template-columns: 1fr 1fr; }.palette-option { min-height: 105px; } }
+
+/* Income activity is a smaller, animated capsule so it can sit above an
+ * expenditure cell without the old diagonal split competing for attention. */
+:root[data-theme][data-palette] .activity-cell { overflow: visible; }
+:root[data-theme][data-palette] .activity-cell.income-only { background: var(--heat-empty); }
+.activity-income-pill { position: absolute; top: 50%; left: 50%; width: 64%; height: 30%; min-height: 8px; border-radius: 999px; transform: translate(-50%, -50%); pointer-events: none; background: linear-gradient(110deg, #ff5f6d 0%, #ffc371 18%, #f9f871 34%, #48d597 51%, #53b8ff 68%, #8b7bff 84%, #ef70c9 100%); background-size: 260% 260%; box-shadow: 0 0 7px rgba(139,123,255,.45), 0 0 14px rgba(72,213,151,.22), inset 0 1px 0 rgba(255,255,255,.68); animation: incomeRainbow 7s ease-in-out infinite; }
+.activity-income-pill.level-1 { width: 42%; height: 22%; opacity: .62; }
+.activity-income-pill.level-2 { width: 52%; height: 26%; opacity: .76; }
+.activity-income-pill.level-3 { width: 61%; height: 30%; opacity: .9; }
+.activity-income-pill.level-4 { width: 71%; height: 35%; opacity: 1; }
+.activity-cell.income-only .activity-income-pill { box-shadow: 0 0 8px rgba(139,123,255,.5), 0 0 16px rgba(72,213,151,.3), inset 0 1px 0 rgba(255,255,255,.72); }
+:root[data-theme][data-palette] .activity-legend i.income.level-1,
+:root[data-theme][data-palette] .activity-legend i.income.level-2,
+:root[data-theme][data-palette] .activity-legend i.income.level-3,
+:root[data-theme][data-palette] .activity-legend i.income.level-4 { background: linear-gradient(110deg, #ff5f6d, #ffc371, #48d597, #53b8ff, #8b7bff, #ef70c9); background-size: 220% 220%; box-shadow: 0 0 7px rgba(139,123,255,.45); animation: incomeRainbow 7s ease-in-out infinite; }
+@keyframes incomeRainbow { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }

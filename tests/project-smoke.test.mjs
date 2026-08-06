@@ -110,6 +110,10 @@ test("the seven-day chart saves outlier scaling and opens the matching ledger da
   assert.match(app, /openTransactionsForDate/);
   assert.match(app, /focusDate=\{transactionFocusDate\}/);
   assert.match(app, /scrollIntoView\(\{ behavior: "smooth", block: "center" \}\)/);
+  assert.match(app, /activity-income-pill/);
+  assert.doesNotMatch(app, /activity-half income/);
   assert.match(styles, /\.week-filter-toggle\.active/);
   assert.match(styles, /\.ledger-day\.focused/);
+  assert.match(styles, /@keyframes incomeRainbow/);
+  assert.match(styles, /linear-gradient\(110deg, #ff5f6d/);
 });
