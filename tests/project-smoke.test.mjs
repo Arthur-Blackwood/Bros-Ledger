@@ -96,3 +96,17 @@ test("supports the existing Bro's Ledger CSV columns", async () => {
   for (const column of ["Date", "Category", "Note", "Account", "Amount"]) assert.match(app, new RegExp(`"${column}"`));
   assert.match(app, /transactionsFromCsv/);
 });
+
+test("the seven-day chart saves outlier scaling and opens the matching ledger day", async () => {
+  const [app, styles] = await Promise.all([
+    readFile(new URL("app/ledger-app.tsx", root), "utf8"),
+    readFile(new URL("app/globals.css", root), "utf8"),
+  ]);
+  assert.match(app, /bros-ledger:week-outlier-filter:v1/);
+  assert.match(app, /activityScaleMaximum\(weekData\.map/);
+  assert.match(app, /openTransactionsForDate/);
+  assert.match(app, /focusDate=\{transactionFocusDate\}/);
+  assert.match(app, /scrollIntoView\(\{ behavior: "smooth", block: "center" \}\)/);
+  assert.match(styles, /\.week-filter-toggle\.active/);
+  assert.match(styles, /\.ledger-day\.focused/);
+});

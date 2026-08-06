@@ -128,6 +128,7 @@ const transactionsFromCsv = (text: string) => {
 const themePreferenceKey = "bros-ledger:theme:v1";
 const legacyThemePreferenceKey = "daylight-ledger:theme:v1";
 const palettePreferenceKey = "bros-ledger:palette:v1";
+const weekOutlierFilterKey = "bros-ledger:week-outlier-filter:v1";
 
 const readThemePreference = (): ThemePreference => {
   if (typeof window === "undefined") return "system";
@@ -282,6 +283,8 @@ export function LedgerApp() {
   const [privacyUnlockOpen, setPrivacyUnlockOpen] = useState(false);
   const [themePreference, setThemePreference] = useState<ThemePreference>(readThemePreference);
   const [palettePreference, setPalettePreference] = useState<PalettePreference>(readPalettePreference);
+  const [weekFilterOutliers, setWeekFilterOutliers] = useState(() => typeof window !== "undefined" && window.localStorage.getItem(weekOutlierFilterKey) === "true");
+  const [transactionFocusDate, setTransactionFocusDate] = useState<string | null>(null);
 
   useEffect(() => {
     const systemTheme = window.matchMedia("(prefers-color-scheme: dark)");
@@ -336,10 +339,25 @@ export function LedgerApp() {
 
   const weekData = useMemo(() => Array.from({ length: 7 }, (_, index) => {
     const date = dateShift(selectedDate, index - 6);
-    const value = visibleTransactions.filter((item) => item.occurredAt === date && item.type === "expense").reduce((sum, item) => sum + item.amountCents, 0);
-    return { date, value };
+    const items = visibleTransactions.filter((item) => item.occurredAt === date && item.type === "expense");
+    return { date, value: items.reduce((sum, item) => sum + item.amountCents, 0), count: items.length };
   }), [selectedDate, visibleTransactions]);
-  const maxWeek = Math.max(...weekData.map((item) => item.value), 1);
+  const weekScaleMaximum = activityScaleMaximum(weekData.map((item) => item.value), weekFilterOutliers);
+  const weekTotal = weekData.reduce((sum, item) => sum + item.value, 0);
+
+  const toggleWeekOutlierFilter = () => {
+    setWeekFilterOutliers((current) => {
+      const next = !current;
+      window.localStorage.setItem(weekOutlierFilterKey, String(next));
+      return next;
+    });
+  };
+
+  const openTransactionsForDate = (date: string) => {
+    setSelectedDate(date);
+    setTransactionFocusDate(date);
+    setView("transactions");
+  };
 
   const reportGroups = useMemo(() => {
     const groups = new Map<string, Transaction[]>();
@@ -476,7 +494,7 @@ export function LedgerApp() {
         <nav className="main-nav" aria-label="Main navigation">
           <NavItem active={view === "overview"} icon="⌂" label="Today" onClick={() => setView("overview")} />
           <NavItem active={view === "reports"} icon="↗" label="Reports" onClick={() => setView("reports")} />
-          <NavItem active={view === "transactions"} icon="≡" label="Transactions" onClick={() => setView("transactions")} />
+          <NavItem active={view === "transactions"} icon="≡" label="Transactions" onClick={() => { setTransactionFocusDate(null); setView("transactions"); }} />
           {canEdit && <NavItem active={view === "personalization"} icon="✎" label="Personalization" onClick={() => setView("personalization")} />}
         </nav>
         <div className="sidebar-foot">
@@ -509,9 +527,12 @@ export function LedgerApp() {
             </section>
 
             <section className="week-card">
-              <div className="section-heading"><div><p>Last 7 days</p><h2>{money(weekData.reduce((sum, item) => sum + item.value, 0), currency)}</h2></div><span>Daily avg. {money(Math.round(weekData.reduce((sum, item) => sum + item.value, 0) / 7), currency)}</span></div>
+              <div className="section-heading week-heading"><div><p>Last 7 days</p><h2>{money(weekTotal, currency)}</h2></div><div className="week-heading-actions"><span>Daily avg. {money(Math.round(weekTotal / 7), currency)}</span><button type="button" className={`week-filter-toggle ${weekFilterOutliers ? "active" : ""}`} onClick={toggleWeekOutlierFilter} aria-pressed={weekFilterOutliers}><i aria-hidden="true" />Filter outliers</button></div></div>
               <div className="mini-bars" aria-label="Spending over the last seven days">
-                {weekData.map((item) => <div className="mini-bar" key={item.date}><i style={{ height: `${Math.max(12, item.value / maxWeek * 100)}%` }} className={item.date === selectedDate ? "current" : ""} /><span>{new Intl.DateTimeFormat("en-AU", { weekday: "narrow" }).format(new Date(`${item.date}T12:00:00`))}</span></div>)}
+                {weekData.map((item) => {
+                  const isClippedOutlier = weekFilterOutliers && item.value > weekScaleMaximum;
+                  return <button type="button" className="mini-bar" key={item.date} disabled={!item.count} onClick={() => openTransactionsForDate(item.date)} aria-label={item.count ? `${longDate(item.date)}: ${money(item.value, currency)} spent across ${item.count} ${item.count === 1 ? "transaction" : "transactions"}. Open in Transactions.` : `${longDate(item.date)}: no expense transactions.`}><i style={{ height: `${Math.max(12, Math.min(item.value, weekScaleMaximum) / weekScaleMaximum * 100)}%` }} className={`${item.date === selectedDate ? "current" : ""} ${isClippedOutlier ? "clipped-outlier" : ""}`}><b aria-hidden="true">{isClippedOutlier ? "···" : ""}</b></i><span>{new Intl.DateTimeFormat("en-AU", { weekday: "narrow" }).format(new Date(`${item.date}T12:00:00`))}</span></button>;
+                })}
               </div>
             </section>
 
@@ -544,10 +565,10 @@ export function LedgerApp() {
         )}
 
         {view === "reports" && (
-          <ReportsPanel transactions={visibleTransactions} selectedDate={selectedDate} currency={currency} categoryEmoji={categoryEmoji} canEdit={canEdit} incomeHidden={incomeHidden} onShowTransactions={() => setView("transactions")} onEditTransaction={(transaction) => { setView("transactions"); setEditingTransaction(transaction); }} />
+          <ReportsPanel transactions={visibleTransactions} selectedDate={selectedDate} currency={currency} categoryEmoji={categoryEmoji} canEdit={canEdit} incomeHidden={incomeHidden} onShowTransactions={() => { setTransactionFocusDate(null); setView("transactions"); }} onEditTransaction={(transaction) => { setTransactionFocusDate(null); setView("transactions"); setEditingTransaction(transaction); }} />
         )}
 
-        {view === "transactions" && <TransactionsPanel groups={reportGroups} currency={currency} canEdit={canEdit} categoryEmoji={categoryEmoji} onEdit={setEditingTransaction} onExport={exportCsv} onImport={importCsv} onAdd={() => setDrawerOpen(true)} />}
+        {view === "transactions" && <TransactionsPanel groups={reportGroups} focusDate={transactionFocusDate} currency={currency} canEdit={canEdit} categoryEmoji={categoryEmoji} onEdit={setEditingTransaction} onExport={exportCsv} onImport={importCsv} onAdd={() => setDrawerOpen(true)} />}
 
         {view === "personalization" && <PersonalizationPanel key={incomeHidden ? "income-hidden" : "income-shown"} categories={categories} incomeHidden={incomeHidden} themePreference={themePreference} palettePreference={palettePreference} onThemeChange={updateThemePreference} onPaletteChange={updatePalettePreference} onReorder={saveCategoryOrder} onSave={saveCategory} onRemove={removeCategory} />}
 
@@ -557,7 +578,7 @@ export function LedgerApp() {
         <NavItem active={view === "overview"} icon="⌂" label="Today" onClick={() => setView("overview")} />
         <NavItem active={view === "reports"} icon="↗" label="Reports" onClick={() => setView("reports")} />
         <button className="mobile-add" onClick={() => setDrawerOpen(true)} aria-label="Add transaction">＋</button>
-        <NavItem active={view === "transactions"} icon="≡" label="Transactions" onClick={() => setView("transactions")} />
+        <NavItem active={view === "transactions"} icon="≡" label="Transactions" onClick={() => { setTransactionFocusDate(null); setView("transactions"); }} />
         <NavItem active={view === "personalization"} icon="✎" label="Personalize" onClick={() => setView("personalization")} />
       </nav>
 
@@ -866,8 +887,9 @@ function InfoCallout({ id, children }: { id: string; children: ReactNode }) {
   return <aside className="info-callout" id={id} role="note"><span>i</span><p>{children}</p></aside>;
 }
 
-function TransactionsPanel({ groups, currency, canEdit, categoryEmoji, onEdit, onExport, onImport, onAdd }: {
+function TransactionsPanel({ groups, focusDate, currency, canEdit, categoryEmoji, onEdit, onExport, onImport, onAdd }: {
   groups: [string, Transaction[]][];
+  focusDate: string | null;
   currency: string;
   canEdit: boolean;
   categoryEmoji: (name: string) => string;
@@ -880,6 +902,11 @@ function TransactionsPanel({ groups, currency, canEdit, categoryEmoji, onEdit, o
   const csvInput = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState("");
+  useEffect(() => {
+    if (!focusDate) return;
+    const frame = window.requestAnimationFrame(() => document.getElementById(`ledger-day-${focusDate}`)?.scrollIntoView({ behavior: "smooth", block: "center" }));
+    return () => window.cancelAnimationFrame(frame);
+  }, [focusDate, groups]);
   const importFile = async (file: File | undefined) => {
     if (!file) return;
     setImporting(true); setImportError("");
@@ -898,7 +925,7 @@ function TransactionsPanel({ groups, currency, canEdit, categoryEmoji, onEdit, o
         <div className="ledger-column-head"><span>Category</span><span>Note</span><span>Account</span><span>Amount</span><span aria-hidden="true" /></div>
         {groups.map(([date, items]) => {
           const dayNet = items.reduce((sum, item) => sum + (item.type === "income" ? item.amountCents : -item.amountCents), 0);
-          return <section className="ledger-day" key={date}>
+          return <section className={`ledger-day ${focusDate === date ? "focused" : ""}`} id={`ledger-day-${date}`} key={date}>
             <div className="ledger-day-head"><strong>{longDate(date)}</strong><span>{items.length} {items.length === 1 ? "entry" : "entries"}</span><b>{money(dayNet, items[0]?.currency ?? currency, true)}</b></div>
             {items.map((item) => <button className="ledger-entry-row" key={item.id} onClick={() => canEdit && onEdit(item)} disabled={!canEdit} aria-label={canEdit ? `Edit ${displayNote(item.note)}, ${item.account}` : `${item.category}, ${displayNote(item.note)}, ${item.account}, view only`}>
               <span className="ledger-category"><i style={{ background: `${categoryMeta[item.category]?.color ?? categoryMeta.Other.color}30` }}>{categoryEmoji(item.category)}</i><b>{item.category}</b></span>
