@@ -12,6 +12,9 @@ export default function manifest(): MetadataRoute.Manifest {
       { src: "/favicon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" },
       { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
       { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+      // Full-bleed art with the mark inside the 80% safe circle, so Android can
+      // apply its own shape mask without cropping into the bars.
+      { src: "/icon-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
     ],
   };
 }
