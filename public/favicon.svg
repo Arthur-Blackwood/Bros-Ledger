@@ -1,16 +1,22 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
   <title id="title">Bro's Ledger</title>
   <style>
-    :root { --icon-bg: #17463b; --icon-face: #f7fff9; --icon-detail: #8bd0ae; }
-    @media (prefers-color-scheme: dark) { :root { --icon-bg: #b9e4cf; --icon-face: #102b24; --icon-detail: #2d765e; } }
-    .bg { fill: var(--icon-bg); }
+    :root { --icon-top: #1a312a; --icon-bottom: #0b1512; --icon-face: #eaf1eb; --icon-accent: #7fc4a2; }
+    @media (prefers-color-scheme: dark) { :root { --icon-top: #172c24; --icon-bottom: #080f0d; --icon-accent: #8ed4b1; } }
+    .top { stop-color: var(--icon-top); }
+    .bottom { stop-color: var(--icon-bottom); }
     .face { fill: var(--icon-face); }
-    .detail { fill: var(--icon-detail); }
+    .accent { fill: var(--icon-accent); }
   </style>
-  <rect class="bg" width="512" height="512" rx="132"/>
-  <path class="detail" d="M320 95h92c13 0 24 11 24 24v278c0 13-11 24-24 24h-92z" opacity=".42"/>
-  <path class="face" d="M142 131h89c48 0 78 27 78 69 0 28-15 50-40 61 31 9 49 33 49 67 0 49-35 82-92 82h-84zm57 44v68h27c20 0 32-12 32-34 0-22-12-34-34-34zm0 112v78h31c25 0 39-14 39-39 0-25-14-39-41-39z"/>
-  <rect class="detail" x="328" y="166" width="47" height="16" rx="8"/>
-  <rect class="detail" x="328" y="198" width="70" height="16" rx="8" opacity=".72"/>
-  <rect class="detail" x="328" y="230" width="56" height="16" rx="8" opacity=".52"/>
+  <defs>
+    <linearGradient id="ground" x1="0" y1="0" x2="0" y2="1">
+      <stop class="top" offset="0"/>
+      <stop class="bottom" offset="1"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#ground)"/>
+  <rect class="face" x="130" y="292" width="48" height="88" rx="24" opacity=".34"/>
+  <rect class="face" x="198" y="238" width="48" height="142" rx="24" opacity=".54"/>
+  <rect class="face" x="266" y="184" width="48" height="196" rx="24" opacity=".78"/>
+  <rect class="accent" x="334" y="130" width="48" height="250" rx="24"/>
 </svg>
