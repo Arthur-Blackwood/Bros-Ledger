@@ -325,7 +325,6 @@ export function LedgerApp() {
     setLoading(false);
   }, []);
 
-  const canEdit = true;
   const visibleTransactions = useMemo(() => incomeHidden ? transactions.filter((item) => item.type === "expense") : transactions, [transactions, incomeHidden]);
   const categoryEmoji = (name: string) => categories.find((category) => category.name === name)?.emoji ?? categoryMeta[name]?.emoji ?? "✨";
   const currency = visibleTransactions[0]?.currency ?? "AUD";
@@ -501,7 +500,7 @@ export function LedgerApp() {
           <NavItem active={view === "overview"} icon="⌂" label="Today" onClick={() => setView("overview")} />
           <NavItem active={view === "reports"} icon="↗" label="Reports" onClick={() => setView("reports")} />
           <NavItem active={view === "transactions"} icon="≡" label="Transactions" onClick={() => { setTransactionFocusDate(null); setView("transactions"); }} />
-          {canEdit && <NavItem active={view === "personalization"} icon="✎" label="Personalization" onClick={() => setView("personalization")} />}
+          <NavItem active={view === "personalization"} icon="✎" label="Personalization" onClick={() => setView("personalization")} />
         </nav>
         <div className="sidebar-foot">
           <div className="sync-dot"><span /> Saved on this device</div>
@@ -554,10 +553,10 @@ export function LedgerApp() {
                   <article className="transaction" key={item.id}>
                     <div className="category-icon" style={{ background: `${categoryMeta[item.category]?.color ?? categoryMeta.Other.color}30` }}>{categoryEmoji(item.category)}</div>
                     <div className="transaction-copy"><h3>{displayNote(item.note, "Untitled entry")}</h3><p>{item.category} · {item.account}</p></div>
-                    <div className={`transaction-amount ${item.type}`}><strong>{item.type === "income" ? "+" : "−"}{money(item.amountCents, item.currency)}</strong>{item.source === "screenshot" && <span>Screenshot import</span>}</div>
-                    {canEdit && <button className="delete-button" onClick={() => removeTransaction(item.id)} aria-label={`Delete ${item.note || "entry"}`}>×</button>}
+                    <div className={`transaction-amount ${item.type}`}><strong>{item.type === "income" ? "+" : "−"}{money(item.amountCents, item.currency)}</strong></div>
+                    <button className="delete-button" onClick={() => removeTransaction(item.id)} aria-label={`Delete ${item.note || "entry"}`}>×</button>
                   </article>
-                )) : <div className="empty-state"><span>🌿</span><h3>A quiet day so far</h3><p>{canEdit ? "Add the first entry when you are ready." : "No transactions are recorded for this day."}</p>{canEdit && <button onClick={() => setDrawerOpen(true)}>Add transaction</button>}</div>}
+                )) : <div className="empty-state"><span>🌿</span><h3>A quiet day so far</h3><p>Add the first entry when you are ready.</p><button onClick={() => setDrawerOpen(true)}>Add transaction</button></div>}
               </div>
             </section>
 
@@ -571,10 +570,10 @@ export function LedgerApp() {
         )}
 
         {view === "reports" && (
-          <ReportsPanel transactions={visibleTransactions} selectedDate={selectedDate} currency={currency} categoryEmoji={categoryEmoji} canEdit={canEdit} incomeHidden={incomeHidden} onShowTransactions={() => { setTransactionFocusDate(null); setView("transactions"); }} onEditTransaction={(transaction) => { setTransactionFocusDate(null); setView("transactions"); setEditingTransaction(transaction); }} />
+          <ReportsPanel transactions={visibleTransactions} selectedDate={selectedDate} currency={currency} categoryEmoji={categoryEmoji} incomeHidden={incomeHidden} onShowTransactions={() => { setTransactionFocusDate(null); setView("transactions"); }} onEditTransaction={(transaction) => { setTransactionFocusDate(null); setView("transactions"); setEditingTransaction(transaction); }} />
         )}
 
-        {view === "transactions" && <TransactionsPanel groups={reportGroups} focusDate={transactionFocusDate} currency={currency} canEdit={canEdit} categoryEmoji={categoryEmoji} onEdit={setEditingTransaction} onExport={exportCsv} onImport={importCsv} onAdd={() => setDrawerOpen(true)} />}
+        {view === "transactions" && <TransactionsPanel groups={reportGroups} focusDate={transactionFocusDate} currency={currency} categoryEmoji={categoryEmoji} onEdit={setEditingTransaction} onExport={exportCsv} onImport={importCsv} onAdd={() => setDrawerOpen(true)} />}
 
         {view === "personalization" && <PersonalizationPanel key={incomeHidden ? "income-hidden" : "income-shown"} categories={categories} incomeHidden={incomeHidden} themePreference={themePreference} palettePreference={palettePreference} onThemeChange={updateThemePreference} onPaletteChange={updatePalettePreference} onReorder={saveCategoryOrder} onSave={saveCategory} onRemove={removeCategory} />}
 
@@ -595,12 +594,11 @@ export function LedgerApp() {
   );
 }
 
-function ReportsPanel({ transactions, selectedDate, currency, categoryEmoji, canEdit, incomeHidden, onShowTransactions, onEditTransaction }: {
+function ReportsPanel({ transactions, selectedDate, currency, categoryEmoji, incomeHidden, onShowTransactions, onEditTransaction }: {
   transactions: Transaction[];
   selectedDate: string;
   currency: string;
   categoryEmoji: (name: string) => string;
-  canEdit: boolean;
   incomeHidden: boolean;
   onShowTransactions: () => void;
   onEditTransaction: (transaction: Transaction) => void;
@@ -826,7 +824,7 @@ function ReportsPanel({ transactions, selectedDate, currency, categoryEmoji, can
         })}
       </div>
       <div className="activity-legend">{effectiveActivityView !== "income" && <span><i className="expense level-3" />Expense · scale to {money(expenseActivityMax, currency)}</span>}{effectiveActivityView !== "expense" && <span><i className="income level-3" />Income · scale to {money(incomeActivityMax, currency)}</span>}<span><i className="level-0" />No activity</span><small>Darker colour means a larger daily total.</small></div>
-      {selectedActivityDate && <ReportDetailPanel title={longDate(selectedActivityDate)} subtitle={effectiveActivityView === "both" ? "Cash flow activity" : effectiveActivityView === "expense" ? "Expenditure activity" : "Income activity"} items={activityDetails} currency={currency} categoryEmoji={categoryEmoji} canEdit={canEdit} onEdit={onEditTransaction} onClose={() => setSelectedActivityDate(null)} />}
+      {selectedActivityDate && <ReportDetailPanel title={longDate(selectedActivityDate)} subtitle={effectiveActivityView === "both" ? "Cash flow activity" : effectiveActivityView === "expense" ? "Expenditure activity" : "Income activity"} items={activityDetails} currency={currency} categoryEmoji={categoryEmoji} onEdit={onEditTransaction} onClose={() => setSelectedActivityDate(null)} />}
     </section>
 
     <section className="explorer-card analysis-card">
@@ -837,7 +835,7 @@ function ReportsPanel({ transactions, selectedDate, currency, categoryEmoji, can
           <div className="trend-bars">{series.map((item) => <button type="button" className={`trend-bar-wrap ${selectedExplorerKey === item.key ? "selected" : ""}`} key={item.key} title={`${explorerLabel(item.key, explorerGroup)}: ${money(item.value, currency)}`} aria-label={`Show ${effectiveExplorerType} details for ${explorerLabel(item.key, explorerGroup)}: ${money(item.value, currency)}`} aria-pressed={selectedExplorerKey === item.key} onClick={() => setSelectedExplorerKey((current) => current === item.key ? null : item.key)}><i style={{ height: `${Math.max(3, item.value / chartMax * 100)}%` }} /></button>)}</div>
           <div className="trend-x-labels">{tickIndexes.map((index) => <span key={series[index].key}>{explorerLabel(series[index].key, explorerGroup)}</span>)}</div>
         </div>
-        {selectedExplorerKey && series.some((item) => item.key === selectedExplorerKey) && <ReportDetailPanel title={explorerLabel(selectedExplorerKey, explorerGroup)} subtitle={effectiveExplorerType === "expense" ? "Expenditure" : "Income"} items={explorerDetails} currency={currency} categoryEmoji={categoryEmoji} canEdit={canEdit} onEdit={onEditTransaction} onClose={() => setSelectedExplorerKey(null)} />}
+        {selectedExplorerKey && series.some((item) => item.key === selectedExplorerKey) && <ReportDetailPanel title={explorerLabel(selectedExplorerKey, explorerGroup)} subtitle={effectiveExplorerType === "expense" ? "Expenditure" : "Income"} items={explorerDetails} currency={currency} categoryEmoji={categoryEmoji} onEdit={onEditTransaction} onClose={() => setSelectedExplorerKey(null)} />}
         <div className="explorer-stats"><div><span>Highest</span><strong>{money(explorerHighest, currency)}</strong></div><div><span>Lowest</span><strong>{money(explorerLowest, currency)}</strong></div><div><span>Amplitude</span><strong>{money(explorerHighest - explorerLowest, currency)}</strong></div><div><span>Average</span><strong>{money(explorerAverage, currency)}</strong></div></div>
       </> : <div className="explorer-empty">No {effectiveExplorerType} data for this selection.</div>}
       <div className="explorer-controls">
@@ -852,7 +850,7 @@ function ReportsPanel({ transactions, selectedDate, currency, categoryEmoji, can
   </div>;
 }
 
-function ReportDetailPanel({ title, subtitle, items, currency, categoryEmoji, canEdit, onEdit, onClose }: { title: string; subtitle: string; items: Transaction[]; currency: string; categoryEmoji: (name: string) => string; canEdit: boolean; onEdit: (transaction: Transaction) => void; onClose: () => void }) {
+function ReportDetailPanel({ title, subtitle, items, currency, categoryEmoji, onEdit, onClose }: { title: string; subtitle: string; items: Transaction[]; currency: string; categoryEmoji: (name: string) => string; onEdit: (transaction: Transaction) => void; onClose: () => void }) {
   useEffect(() => {
     const mobileQuery = window.matchMedia("(max-width: 680px)");
     const previousOverflow = document.body.style.overflow;
@@ -884,7 +882,7 @@ function ReportDetailPanel({ title, subtitle, items, currency, categoryEmoji, ca
       <div className="report-detail-head"><div><p>{subtitle}</p><h3>{title}</h3></div><span>{items.length} {items.length === 1 ? "transaction" : "transactions"}</span><button type="button" onClick={onClose} aria-label="Close transaction details">×</button></div>
       {items.length ? <div className="report-detail-table">
         <div className="report-detail-columns"><span>Date</span><span>Category</span><span>Note</span><span>Account</span><span>Amount</span><span aria-hidden="true" /></div>
-        {items.map((item) => <div className="report-detail-row" key={item.id}><time dateTime={item.occurredAt}>{item.occurredAt}</time><span className="report-detail-category"><small className="report-detail-mobile-label">Category</small><i aria-hidden="true">{categoryEmoji(item.category)}</i><span>{item.category}</span></span><strong>{displayNote(item.note)}</strong><span className="report-detail-account"><small className="report-detail-mobile-label">Account</small><span>{item.account}</span></span><b className={item.type}>{item.type === "income" ? "+" : "−"}{money(item.amountCents, item.currency || currency)}</b>{canEdit ? <button className="report-detail-edit" type="button" onClick={() => editItem(item)} aria-label={`Edit ${displayNote(item.note)}`}>Edit</button> : <span className="report-detail-action-spacer" />}</div>)}
+        {items.map((item) => <div className="report-detail-row" key={item.id}><time dateTime={item.occurredAt}>{item.occurredAt}</time><span className="report-detail-category"><small className="report-detail-mobile-label">Category</small><i aria-hidden="true">{categoryEmoji(item.category)}</i><span>{item.category}</span></span><strong>{displayNote(item.note)}</strong><span className="report-detail-account"><small className="report-detail-mobile-label">Account</small><span>{item.account}</span></span><b className={item.type}>{item.type === "income" ? "+" : "−"}{money(item.amountCents, item.currency || currency)}</b><button className="report-detail-edit" type="button" onClick={() => editItem(item)} aria-label={`Edit ${displayNote(item.note)}`}>Edit</button></div>)}
       </div> : <p className="report-detail-empty">No expenditure was recorded for this date.</p>}
     </section>
   </div>;
@@ -894,11 +892,10 @@ function InfoCallout({ id, children }: { id: string; children: ReactNode }) {
   return <aside className="info-callout" id={id} role="note"><span>i</span><p>{children}</p></aside>;
 }
 
-function TransactionsPanel({ groups, focusDate, currency, canEdit, categoryEmoji, onEdit, onExport, onImport, onAdd }: {
+function TransactionsPanel({ groups, focusDate, currency, categoryEmoji, onEdit, onExport, onImport, onAdd }: {
   groups: [string, Transaction[]][];
   focusDate: string | null;
   currency: string;
-  canEdit: boolean;
   categoryEmoji: (name: string) => string;
   onEdit: (transaction: Transaction) => void;
   onExport: () => void;
@@ -934,16 +931,16 @@ function TransactionsPanel({ groups, focusDate, currency, canEdit, categoryEmoji
           const dayNet = items.reduce((sum, item) => sum + (item.type === "income" ? item.amountCents : -item.amountCents), 0);
           return <section className={`ledger-day ${focusDate === date ? "focused" : ""}`} id={`ledger-day-${date}`} key={date}>
             <div className="ledger-day-head"><strong>{longDate(date)}</strong><span>{items.length} {items.length === 1 ? "entry" : "entries"}</span><b>{money(dayNet, items[0]?.currency ?? currency, true)}</b></div>
-            {items.map((item) => <button className="ledger-entry-row" key={item.id} onClick={() => canEdit && onEdit(item)} disabled={!canEdit} aria-label={canEdit ? `Edit ${displayNote(item.note)}, ${item.account}` : `${item.category}, ${displayNote(item.note)}, ${item.account}, view only`}>
+            {items.map((item) => <button className="ledger-entry-row" key={item.id} onClick={() => onEdit(item)} aria-label={`Edit ${displayNote(item.note)}, ${item.account}`}>
               <span className="ledger-category"><i style={{ background: `${categoryMeta[item.category]?.color ?? categoryMeta.Other.color}30` }}>{categoryEmoji(item.category)}</i><b>{item.category}</b></span>
               <span className="ledger-note">{displayNote(item.note)}</span>
               <span className="ledger-account">{item.account}</span>
               <strong className={item.type}>{item.type === "income" ? "+" : "−"}{money(item.amountCents, item.currency)}</strong>
-              <span className="ledger-edit">{canEdit ? "Edit" : "View"}</span>
+              <span className="ledger-edit">Edit</span>
             </button>)}
           </section>;
         })}
-      </div></div> : <div className="ledger-empty"><span>🌿</span><h3>No entries yet</h3><p>{canEdit ? "Add a transaction and it will appear here." : "There are no entries to display."}</p>{canEdit && <button onClick={onAdd}>Add transaction</button>}</div>}
+      </div></div> : <div className="ledger-empty"><span>🌿</span><h3>No entries yet</h3><p>Add a transaction and it will appear here.</p><button onClick={onAdd}>Add transaction</button></div>}
     </section>
   </div>;
 }
