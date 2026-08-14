@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 type Transaction = {
   id: string;
@@ -494,7 +494,7 @@ export function LedgerApp() {
     <main className="app-shell">
       <aside className="sidebar">
         <button className="brand" onClick={() => setView("overview")} aria-label="Go to overview">
-          <span className="brand-mark">B</span><span>Bro&apos;s Ledger</span>
+          <BrandMark className="brand-mark" /><span>Bro&apos;s Ledger</span>
         </button>
         <nav className="main-nav" aria-label="Main navigation">
           <NavItem active={view === "overview"} icon="⌂" label="Today" onClick={() => setView("overview")} />
@@ -946,7 +946,7 @@ function TransactionsPanel({ groups, focusDate, currency, categoryEmoji, onEdit,
 }
 
 function AuthLoading() {
-  return <main className="auth-shell"><div className="auth-card auth-loading"><span className="auth-mark">B</span><p>Opening your local ledger…</p></div></main>;
+  return <main className="auth-shell"><div className="auth-card auth-loading"><BrandMark className="auth-mark" /><p>Opening your local ledger…</p></div></main>;
 }
 
 function PrivacyPinSetup({ onCreated }: { onCreated: () => void }) {
@@ -967,7 +967,7 @@ function PrivacyPinSetup({ onCreated }: { onCreated: () => void }) {
 
   return <main className="auth-shell">
     <section className="auth-card">
-      <div className="auth-mark">B</div>
+      <BrandMark className="auth-mark" />
       <p className="eyebrow">Bro&apos;s Ledger</p>
       <h1>Your own ledger,<br />on this device.</h1>
       <p className="auth-copy">Create a five-digit privacy PIN. It only unlocks income visibility; your new ledger starts empty and stays in this browser.</p>
@@ -1323,4 +1323,23 @@ function buildDonut(entries: [string, number][]) {
     return `${donutColor(index)} ${start}% ${cursor}%`;
   });
   return `conic-gradient(${segments.join(", ")})`;
+}
+
+function BrandMark({ className }: { className: string }) {
+  const groundId = `brand-mark-${useId().replace(/:/g, "")}`;
+  return (
+    <svg className={className} viewBox="0 0 512 512" role="img" aria-label="Bro&apos;s Ledger">
+      <defs>
+        <linearGradient id={groundId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#1a312a" />
+          <stop offset="1" stopColor="#0b1512" />
+        </linearGradient>
+      </defs>
+      <rect width="512" height="512" rx="112" fill={`url(#${groundId})`} />
+      <rect x="130" y="292" width="48" height="88" rx="24" fill="#eaf1eb" opacity=".34" />
+      <rect x="198" y="238" width="48" height="142" rx="24" fill="#eaf1eb" opacity=".54" />
+      <rect x="266" y="184" width="48" height="196" rx="24" fill="#eaf1eb" opacity=".78" />
+      <rect x="334" y="130" width="48" height="250" rx="24" fill="#7fc4a2" />
+    </svg>
+  );
 }
