@@ -16,7 +16,7 @@ test("uses the Bro's Ledger brand across install and page metadata", async () =>
   for (const source of [layout, page, manifest, app, favicon]) {
     assert.match(source, /Bro(?:'|&apos;)s Ledger/);
   }
-  assert.match(app, /className="brand-mark">B</);
+  assert.match(app, /<BrandMark className="brand-mark" \/>/);
   assert.match(favicon, /prefers-color-scheme: dark/);
   assert.match(favicon, /class="face"/);
   assert.match(manifest, /favicon\.svg/);
@@ -28,6 +28,8 @@ test("ships the required install and social assets", async () => {
     access(new URL("public/icon-192.png", root)),
     access(new URL("public/icon-512.png", root)),
     access(new URL("public/og.png", root)),
+    access(new URL("public/apple-touch-icon.png", root)),
+    access(new URL("public/icon-maskable-512.png", root)),
   ]);
 });
 
@@ -116,4 +118,20 @@ test("the seven-day chart saves outlier scaling and opens the matching ledger da
   assert.match(styles, /\.ledger-day\.focused/);
   assert.match(styles, /@keyframes incomeRainbow/);
   assert.match(styles, /linear-gradient\(110deg, #ff5f6d/);
+});
+
+test("declares icons that survive an install to the home screen", async () => {
+  const [layout, manifest, favicon] = await Promise.all([
+    readFile(new URL("app/layout.tsx", root), "utf8"),
+    readFile(new URL("app/manifest.ts", root), "utf8"),
+    readFile(new URL("public/favicon.svg", root), "utf8"),
+  ]);
+
+  // iOS ignores the web manifest entirely, so Safari needs its own declaration.
+  assert.match(layout, /apple: \[\{ url: "\/apple-touch-icon\.png", sizes: "180x180", type: "image\/png" \}\]/);
+  assert.match(layout, /name="apple-mobile-web-app-capable" content="yes"/);
+  assert.match(layout, /name="apple-mobile-web-app-title"/);
+  // Android masks any icon that does not declare a maskable safe zone.
+  assert.match(manifest, /src: "\/icon-maskable-512\.png", sizes: "512x512", type: "image\/png", purpose: "maskable"/);
+  assert.match(favicon, /viewBox="0 0 512 512"/);
 });
