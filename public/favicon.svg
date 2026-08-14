@@ -1,12 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
   <title id="title">Bro's Ledger</title>
   <style>
-    :root { --icon-top: #1a312a; --icon-bottom: #0b1512; --icon-face: #eaf1eb; --icon-accent: #7fc4a2; }
-    @media (prefers-color-scheme: dark) { :root { --icon-top: #172c24; --icon-bottom: #080f0d; --icon-accent: #8ed4b1; } }
+    :root { --icon-top: #242629; --icon-bottom: #0c0d0e; --icon-face: #ffffff; }
+    @media (prefers-color-scheme: dark) { :root { --icon-top: #1c1e21; --icon-bottom: #08090a; } }
     .top { stop-color: var(--icon-top); }
     .bottom { stop-color: var(--icon-bottom); }
     .face { fill: var(--icon-face); }
-    .accent { fill: var(--icon-accent); }
   </style>
   <defs>
     <linearGradient id="ground" x1="0" y1="0" x2="0" y2="1">
@@ -15,8 +14,8 @@
     </linearGradient>
   </defs>
   <rect width="512" height="512" rx="112" fill="url(#ground)"/>
-  <rect class="face" x="130" y="292" width="48" height="88" rx="24" opacity=".34"/>
-  <rect class="face" x="198" y="238" width="48" height="142" rx="24" opacity=".54"/>
-  <rect class="face" x="266" y="184" width="48" height="196" rx="24" opacity=".78"/>
-  <rect class="accent" x="334" y="130" width="48" height="250" rx="24"/>
+  <rect class="face" x="130" y="292" width="48" height="88" rx="24" opacity=".2"/>
+  <rect class="face" x="198" y="238" width="48" height="142" rx="24" opacity=".36"/>
+  <rect class="face" x="266" y="184" width="48" height="196" rx="24" opacity=".58"/>
+  <rect class="face" x="334" y="130" width="48" height="250" rx="24"/>
 </svg>
