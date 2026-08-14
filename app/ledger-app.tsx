@@ -1331,15 +1331,15 @@ function BrandMark({ className }: { className: string }) {
     <svg className={className} viewBox="0 0 512 512" role="img" aria-label="Bro&apos;s Ledger">
       <defs>
         <linearGradient id={groundId} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#1a312a" />
-          <stop offset="1" stopColor="#0b1512" />
+          <stop offset="0" stopColor="#242629" />
+          <stop offset="1" stopColor="#0c0d0e" />
         </linearGradient>
       </defs>
       <rect width="512" height="512" rx="112" fill={`url(#${groundId})`} />
-      <rect x="130" y="292" width="48" height="88" rx="24" fill="#eaf1eb" opacity=".34" />
-      <rect x="198" y="238" width="48" height="142" rx="24" fill="#eaf1eb" opacity=".54" />
-      <rect x="266" y="184" width="48" height="196" rx="24" fill="#eaf1eb" opacity=".78" />
-      <rect x="334" y="130" width="48" height="250" rx="24" fill="#7fc4a2" />
+      <rect x="130" y="292" width="48" height="88" rx="24" fill="#ffffff" opacity=".2" />
+      <rect x="198" y="238" width="48" height="142" rx="24" fill="#ffffff" opacity=".36" />
+      <rect x="266" y="184" width="48" height="196" rx="24" fill="#ffffff" opacity=".58" />
+      <rect x="334" y="130" width="48" height="250" rx="24" fill="#ffffff" />
     </svg>
   );
 }
