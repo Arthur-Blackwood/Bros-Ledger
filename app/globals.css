@@ -91,7 +91,16 @@ button:disabled { cursor: not-allowed; }
 .day-total { padding: 16px 4px 7px; display: flex; justify-content: space-between; color: var(--muted); font-size: 12px; }.day-total strong { color: var(--ink); font-size: 14px; }
 .transaction-list { display: grid; }
 .transaction { position: relative; display: grid; grid-template-columns: 46px minmax(0, 1fr) auto; align-items: center; gap: 13px; padding: 13px 3px; border-bottom: 1px solid #efede7; }
-.transaction:last-child { border-bottom: 0; }.category-icon { width: 46px; height: 46px; border-radius: 17px; display: grid; place-items: center; font-size: 21px; }
+.transaction:last-child { border-bottom: 0; }
+
+/* Full-row hit target. It sits first in the DOM so the row content, which is
+   positioned, still paints above it; the delete button opts back into pointer
+   events because the rest of the row deliberately does not take clicks. */
+.transaction-open { position: absolute; inset: 0 -3px; border: 0; border-radius: 12px; background: transparent; cursor: pointer; }
+.transaction-open:hover { background: var(--surface-hover); }
+.transaction-open:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
+.transaction > *:not(.transaction-open) { position: relative; pointer-events: none; }
+.transaction .delete-button { pointer-events: auto; }.category-icon { width: 46px; height: 46px; border-radius: 17px; display: grid; place-items: center; font-size: 21px; }
 .transaction-copy h3 { margin: 0 0 5px; font-size: 14px; }.transaction-copy p { margin: 0; color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .transaction-amount { text-align: right; padding-right: 14px; }.transaction-amount strong { display: block; font-size: 14px; }.transaction-amount.income strong { color: var(--mint-deep); }.transaction-amount span { display: block; margin-top: 4px; color: var(--muted); font-size: 9px; }
 .delete-button { position: absolute; right: -8px; top: 4px; border: 0; background: transparent; color: #b5bab7; opacity: 0; cursor: pointer; }.transaction:hover .delete-button { opacity: 1; }
