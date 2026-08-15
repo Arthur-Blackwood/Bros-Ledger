@@ -90,8 +90,8 @@ button:disabled { cursor: not-allowed; }
 .transaction { position: relative; display: grid; grid-template-columns: 46px minmax(0, 1fr) auto; align-items: center; gap: 13px; padding: 13px 3px; border-bottom: 1px solid #efede7; }
 .transaction:last-child { border-bottom: 0; }
 
-/* Recently Deleted */
-/* The bin lives in the sidebar on wide screens; below the mobile breakpoint the
+/* Bin */
+/* The Bin lives in the sidebar on wide screens; below the mobile breakpoint the
    sidebar is gone, so it is folded into Settings instead. */
 .settings-deleted { display: none; }
 .settings-deleted .transactions-page { display: block; }
