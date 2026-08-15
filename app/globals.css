@@ -465,6 +465,8 @@ button:disabled { cursor: not-allowed; }
 :root[data-theme][data-palette] .activity-cell { overflow: visible; }
 :root[data-theme][data-palette] .activity-cell.income-only { background: var(--heat-empty); }
 .activity-income-pill { position: absolute; top: 50%; left: 50%; width: 64%; height: 30%; min-height: 8px; border-radius: 999px; transform: translate(-50%, -50%); pointer-events: none; background: linear-gradient(110deg, #ff5f6d 0%, #ffc371 18%, #f9f871 34%, #48d597 51%, #53b8ff 68%, #8b7bff 84%, #ef70c9 100%); background-size: 260% 260%; box-shadow: 0 0 7px rgba(139,123,255,.45), 0 0 14px rgba(72,213,151,.22), inset 0 1px 0 rgba(255,255,255,.68); animation: incomeRainbow 7s ease-in-out infinite; }
+.activity-income-pill.level-0 { display: none; }
+
 .activity-income-pill.level-1 { width: 42%; height: 22%; opacity: .62; }
 .activity-income-pill.level-2 { width: 52%; height: 26%; opacity: .76; }
 .activity-income-pill.level-3 { width: 61%; height: 30%; opacity: .9; }
