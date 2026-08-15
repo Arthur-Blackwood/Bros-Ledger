@@ -33,6 +33,8 @@ button:disabled { cursor: not-allowed; }
 .main-nav button, .mobile-nav button { border: 0; background: transparent; cursor: pointer; }
 .main-nav button { height: 48px; border-radius: 16px; padding: 0 15px; display: flex; align-items: center; gap: 13px; color: #65706b; text-align: left; }
 .main-nav button span { width: 24px; font-size: 22px; line-height: 1; }
+.main-nav button span svg, .mobile-nav button span svg { width: 1em; height: 1em; display: block; }
+.main-nav button span:has(svg) { display: grid; place-items: center; }
 .main-nav button em, .mobile-nav button em { font-style: normal; font-size: 14px; font-weight: 700; }
 .main-nav button.active { color: var(--ink); background: #e5eee7; }
 .sidebar-foot { margin-top: auto; padding: 17px 10px 0; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
