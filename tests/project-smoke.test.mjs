@@ -66,15 +66,15 @@ test("ships coordinated light and dark colour palettes", async () => {
     readFile(new URL("app/ledger-app.tsx", root), "utf8"),
     readFile(new URL("app/globals.css", root), "utf8"),
   ]);
-  for (const palette of ["forest", "ocean", "indigo", "plum", "terracotta"]) {
+  for (const palette of ["mono", "forest", "ocean", "indigo", "plum", "terracotta"]) {
     assert.match(app, new RegExp(`"${palette}"`));
     assert.match(styles, new RegExp(`palette-${palette}`));
   }
-  for (const palette of ["ocean", "indigo", "plum", "terracotta"]) assert.match(styles, new RegExp(`data-palette=\\"${palette}\\"`));
+  for (const palette of ["mono", "ocean", "indigo", "plum", "terracotta"]) assert.match(styles, new RegExp(`data-palette=\\"${palette}\\"`));
   assert.match(layout, /dataset\.palette/);
-  assert.match(layout, /dataset\.palette="forest"/);
-  assert.match(app, /typeof window === "undefined"\) return "forest"/);
-  assert.match(app, /\? saved : "forest"/);
+  assert.match(layout, /dataset\.palette="mono"/);
+  assert.match(app, /typeof window === "undefined"\) return "mono"/);
+  assert.match(app, /\? saved : "mono"/);
   for (const category of ["Shopping", "Health", "Subscription", "Electronics", "Dine", "Education", "Transport", "Fun", "Other", "Income", "Overseas"]) assert.match(app, new RegExp(`\\["${category}"`));
   assert.match(styles, /--heat-empty:/);
   assert.match(styles, /--chart-6:/);
