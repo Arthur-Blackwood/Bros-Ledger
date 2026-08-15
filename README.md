@@ -27,11 +27,11 @@ Built with Next.js 16 and React 19, bundled by Vite through [vinext](https://www
 - The full ledger grouped by date, with inline editing and deletion.
 - CSV import and export using the columns `Date, Category, Note, Account, Amount`. Positive amounts are treated as income, negative amounts as expenses. Categories that do not exist yet are created on import.
 
-### Recently Deleted
+### Bin
 
-Deleting an entry moves it here rather than discarding it. Each row shows how long it has left, and can be restored to the ledger or removed for good. Anything older than **30 days** is pruned automatically the next time the app loads.
+Deleting an entry moves it to the Bin rather than discarding it. Each row shows how long it has left, and can be restored to the ledger or removed for good. Anything older than **30 days** is pruned automatically the next time the app loads.
 
-On desktop this is its own sidebar section. On mobile — where the sidebar is hidden — it appears at the bottom of **Settings** instead, so there is no extra tab.
+On desktop the Bin is its own sidebar section. On mobile — where the sidebar is hidden — it appears at the bottom of **Settings** instead, so there is no extra tab.
 
 ### Personalization
 
@@ -92,7 +92,7 @@ Everything is stored under `bros-ledger:*` keys in the browser’s local storage
 | Key | Contents |
 | --- | --- |
 | `bros-ledger:transactions:v1` | Every transaction |
-| `bros-ledger:deleted-transactions:v1` | The Recently Deleted bin |
+| `bros-ledger:deleted-transactions:v1` | The Bin |
 | `bros-ledger:categories:v1` | Your categories and their order |
 | `bros-ledger:privacy-pin-hash:v1` | PBKDF2 hash of the income PIN |
 | `bros-ledger:privacy-pin-salt:v1` | Salt for that hash |
