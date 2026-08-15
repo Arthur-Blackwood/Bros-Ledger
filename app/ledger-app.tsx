@@ -27,7 +27,7 @@ type CategoryPeriod = "month" | "quarter" | "year";
 type ActivityView = "both" | "expense" | "income";
 type ActivityWeeks = 8 | 16 | 26;
 type ThemePreference = "system" | "light" | "dark";
-type PalettePreference = "forest" | "ocean" | "indigo" | "plum" | "terracotta";
+type PalettePreference = "mono" | "forest" | "ocean" | "indigo" | "plum" | "terracotta";
 
 const localTransactionsKey = "bros-ledger:transactions:v1";
 const localCategoriesKey = "bros-ledger:categories:v1";
@@ -143,10 +143,10 @@ const readThemePreference = (): ThemePreference => {
 };
 
 const readPalettePreference = (): PalettePreference => {
-  if (typeof window === "undefined") return "forest";
+  if (typeof window === "undefined") return "mono";
   try {
     const saved = window.localStorage.getItem(palettePreferenceKey);
-    return saved === "forest" || saved === "ocean" || saved === "indigo" || saved === "plum" || saved === "terracotta" ? saved : "forest";
+    return saved === "mono" || saved === "forest" || saved === "ocean" || saved === "indigo" || saved === "plum" || saved === "terracotta" ? saved : "mono";
   } catch {
     return "forest";
   }
@@ -1184,7 +1184,7 @@ function PersonalizationPanel({ categories, incomeHidden, themePreference, palet
       </div>
       <h3 className="theme-subheading palette-heading">Colour palette</h3>
       <div className="palette-options" role="radiogroup" aria-label="Application colour palette">
-        {(["forest", "ocean", "indigo", "plum", "terracotta"] as PalettePreference[]).map((preference) => <button type="button" role="radio" aria-checked={palettePreference === preference} className={`palette-option palette-${preference} ${palettePreference === preference ? "active" : ""}`} key={preference} onClick={() => onPaletteChange(preference)}><span className="palette-preview" aria-hidden="true"><i /><i /><i /></span><strong>{preference[0].toUpperCase() + preference.slice(1)}</strong><small>{preference === "forest" ? "Sage and eucalyptus" : preference === "ocean" ? "Navy and sea glass" : preference === "indigo" ? "Ink and periwinkle" : preference === "plum" ? "Aubergine and rose" : "Clay and warm sand"}</small></button>)}
+        {(["mono", "forest", "ocean", "indigo", "plum", "terracotta"] as PalettePreference[]).map((preference) => <button type="button" role="radio" aria-checked={palettePreference === preference} className={`palette-option palette-${preference} ${palettePreference === preference ? "active" : ""}`} key={preference} onClick={() => onPaletteChange(preference)}><span className="palette-preview" aria-hidden="true"><i /><i /><i /></span><strong>{preference[0].toUpperCase() + preference.slice(1)}</strong><small>{preference === "mono" ? "Ink and paper" : preference === "forest" ? "Sage and eucalyptus" : preference === "ocean" ? "Navy and sea glass" : preference === "indigo" ? "Ink and periwinkle" : preference === "plum" ? "Aubergine and rose" : "Clay and warm sand"}</small></button>)}
       </div>
     </section>
     <section className="category-library-card">
