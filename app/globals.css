@@ -93,6 +93,27 @@ button:disabled { cursor: not-allowed; }
 .transaction { position: relative; display: grid; grid-template-columns: 46px minmax(0, 1fr) auto; align-items: center; gap: 13px; padding: 13px 3px; border-bottom: 1px solid #efede7; }
 .transaction:last-child { border-bottom: 0; }
 
+/* Recently Deleted */
+.deleted-list { display: grid; }
+.deleted-row { display: grid; grid-template-columns: 46px minmax(0, 1fr) auto auto; align-items: center; gap: 13px; padding: 14px 3px; border-bottom: 1px solid var(--app-line); }
+.deleted-row:last-child { border-bottom: 0; }
+.deleted-copy h3 { margin: 0 0 5px; font-size: 14px; }
+.deleted-copy p { margin: 0; color: var(--app-muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.deleted-amount { text-align: right; padding-right: 14px; }
+.deleted-amount strong { display: block; font-size: 14px; }
+.deleted-amount.income strong { color: var(--accent); }
+.deleted-amount span { display: block; margin-top: 4px; color: var(--app-muted); font-size: 9px; font-weight: 700; }
+.deleted-actions { display: flex; align-items: center; gap: 8px; }
+.deleted-actions button { border: 1px solid var(--app-line); border-radius: 10px; padding: 7px 12px; font-size: 11px; font-weight: 700; cursor: pointer; background: var(--surface-alt); color: var(--app-text); }
+.deleted-actions button:hover { background: var(--surface-hover); }
+.deleted-restore { border-color: var(--accent-pale); }
+.deleted-purge { color: #b3261e; }
+.danger-button { color: #b3261e; }
+@media (max-width: 680px) {
+  .deleted-row { grid-template-columns: 40px minmax(0, 1fr) auto; row-gap: 10px; }
+  .deleted-actions { grid-column: 2 / -1; justify-content: flex-end; }
+}
+
 /* Full-row hit target. It sits first in the DOM so the row content, which is
    positioned, still paints above it; the delete button opts back into pointer
    events because the rest of the row deliberately does not take clicks. */
