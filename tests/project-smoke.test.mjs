@@ -151,3 +151,27 @@ test("the activity heatmap only marks days that moved money", async () => {
   // Belt and braces: a zero-level pill must not paint even if one is rendered.
   assert.match(styles, /\.activity-income-pill\.level-0 \{ display: none; \}/);
 });
+
+test("deleting an entry parks it in Recently Deleted instead of dropping it", async () => {
+  const [app, styles] = await Promise.all([
+    readFile(new URL("app/ledger-app.tsx", root), "utf8"),
+    readFile(new URL("app/globals.css", root), "utf8"),
+  ]);
+
+  assert.match(app, /bros-ledger:deleted-transactions:v1/);
+  assert.match(app, /const deletedRetentionDays = 30;/);
+  // Deleting must capture the entry, not just filter it away.
+  assert.match(app, /const target = transactions\.find\(\(item\) => item\.id === id\);/);
+  assert.match(app, /deletedAt: new Date\(\)\.toISOString\(\)/);
+  assert.doesNotMatch(app, /setNotice\("Transaction deleted\."\);/);
+  // Restore and permanent delete both exist, and the bin respects the income lock.
+  assert.match(app, /const restoreTransaction = async \(id: string\)/);
+  assert.match(app, /const purgeTransaction = async \(id: string\)/);
+  assert.match(app, /const purgeAllTransactions = async \(\)/);
+  assert.match(app, /const visibleDeleted = useMemo\(\(\) => incomeHidden/);
+  // Reachable from the sidebar and rendered by its own panel.
+  assert.match(app, /label="Recently Deleted" onClick=\{\(\) => setView\("deleted"\)\}/);
+  assert.match(app, /function RecentlyDeletedPanel/);
+  assert.match(app, /type View = "overview" \| "reports" \| "transactions" \| "deleted" \| "personalization";/);
+  assert.match(styles, /\.deleted-row \{/);
+});
