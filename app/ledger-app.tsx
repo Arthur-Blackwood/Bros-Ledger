@@ -16,10 +16,11 @@ type Transaction = {
 };
 type TransactionDraft = { date: string; type: Transaction["type"]; amount: number; category: string; account: string; note: string };
 type TransactionChanges = { category: string; note: string; account: string; amount: number };
+type DeletedTransaction = Transaction & { deletedAt: string };
 
 type CategoryType = "expense" | "income";
 type LedgerCategory = { id: string; name: string; emoji: string; type: CategoryType };
-type View = "overview" | "reports" | "transactions" | "personalization";
+type View = "overview" | "reports" | "transactions" | "deleted" | "personalization";
 type ExplorerType = "expense" | "income";
 type ExplorerGroup = "day" | "month" | "year";
 type ExplorerPeriod = "week" | "month" | "quarter" | "year" | "all";
@@ -33,6 +34,8 @@ const localTransactionsKey = "bros-ledger:transactions:v1";
 const localCategoriesKey = "bros-ledger:categories:v1";
 const privacyPinHashKey = "bros-ledger:privacy-pin-hash:v1";
 const privacyPinSaltKey = "bros-ledger:privacy-pin-salt:v1";
+const deletedTransactionsKey = "bros-ledger:deleted-transactions:v1";
+const deletedRetentionDays = 30;
 
 const starterCategoryTemplates: Array<[string, string, CategoryType]> = [
   ["Shopping", "🛍️", "expense"], ["Health", "💪", "expense"], ["Subscription", "🔔", "expense"],
@@ -43,6 +46,18 @@ const starterCategoryTemplates: Array<[string, string, CategoryType]> = [
 
 const saveLocalTransactions = (transactions: Transaction[]) => window.localStorage.setItem(localTransactionsKey, JSON.stringify(transactions));
 const saveLocalCategories = (categories: LedgerCategory[]) => window.localStorage.setItem(localCategoriesKey, JSON.stringify(categories));
+const saveDeletedTransactions = (items: DeletedTransaction[]) => window.localStorage.setItem(deletedTransactionsKey, JSON.stringify(items));
+
+// Reading also prunes: anything past the retention window is dropped on load so the
+// bin cannot grow without bound, and "recently" stays honest.
+const readDeletedTransactions = () => {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(deletedTransactionsKey) ?? "[]");
+    if (!Array.isArray(parsed)) return [];
+    const cutoff = Date.now() - deletedRetentionDays * 86400000;
+    return (parsed as DeletedTransaction[]).filter((item) => Number.isFinite(Date.parse(item.deletedAt)) && Date.parse(item.deletedAt) >= cutoff);
+  } catch { return []; }
+};
 
 const readLocalTransactions = () => {
   try {
@@ -280,6 +295,7 @@ export function LedgerApp() {
   const [view, setView] = useState<View>("overview");
   const [selectedDate, setSelectedDate] = useState(today);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [deletedTransactions, setDeletedTransactions] = useState<DeletedTransaction[]>([]);
   const [categories, setCategories] = useState<LedgerCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -320,12 +336,17 @@ export function LedgerApp() {
 
   useEffect(() => {
     setTransactions(readLocalTransactions());
+    const pruned = readDeletedTransactions();
+    setDeletedTransactions(pruned);
+    saveDeletedTransactions(pruned);
     setCategories(readLocalCategories());
     setPinReady(Boolean(window.localStorage.getItem(privacyPinHashKey) && window.localStorage.getItem(privacyPinSaltKey)));
     setLoading(false);
   }, []);
 
   const visibleTransactions = useMemo(() => incomeHidden ? transactions.filter((item) => item.type === "expense") : transactions, [transactions, incomeHidden]);
+  // The bin honours the income lock too, so hidden income cannot leak out through it.
+  const visibleDeleted = useMemo(() => incomeHidden ? deletedTransactions.filter((item) => item.type === "expense") : deletedTransactions, [deletedTransactions, incomeHidden]);
   const categoryEmoji = (name: string) => categories.find((category) => category.name === name)?.emoji ?? categoryMeta[name]?.emoji ?? "✨";
   const currency = visibleTransactions[0]?.currency ?? "AUD";
   const selectedItems = visibleTransactions.filter((item) => item.occurredAt === selectedDate);
@@ -459,10 +480,49 @@ export function LedgerApp() {
   };
 
   const removeTransaction = async (id: string) => {
+    const target = transactions.find((item) => item.id === id);
     const next = transactions.filter((item) => item.id !== id);
     saveLocalTransactions(next);
     setTransactions(next);
-    setNotice("Transaction deleted.");
+    if (target) {
+      const nextDeleted = [{ ...target, deletedAt: new Date().toISOString() }, ...deletedTransactions];
+      saveDeletedTransactions(nextDeleted);
+      setDeletedTransactions(nextDeleted);
+    }
+    setNotice(`Moved to Recently Deleted. Kept for ${deletedRetentionDays} days.`);
+  };
+
+  const restoreTransaction = async (id: string) => {
+    const target = deletedTransactions.find((item) => item.id === id);
+    if (!target) return;
+    const restored: Transaction = {
+      id: target.id, occurredAt: target.occurredAt, type: target.type, amountCents: target.amountCents,
+      currency: target.currency, category: target.category, account: target.account, note: target.note,
+      tags: target.tags, source: target.source,
+    };
+    const nextDeleted = deletedTransactions.filter((item) => item.id !== id);
+    const next = [restored, ...transactions];
+    saveDeletedTransactions(nextDeleted);
+    setDeletedTransactions(nextDeleted);
+    saveLocalTransactions(next);
+    setTransactions(next);
+    setNotice("Entry restored to your ledger.");
+  };
+
+  const purgeTransaction = async (id: string) => {
+    const nextDeleted = deletedTransactions.filter((item) => item.id !== id);
+    saveDeletedTransactions(nextDeleted);
+    setDeletedTransactions(nextDeleted);
+    setNotice("Entry deleted permanently.");
+  };
+
+  const purgeAllTransactions = async () => {
+    // Only clears what the current privacy mode can actually see.
+    const removable = new Set(visibleDeleted.map((item) => item.id));
+    const nextDeleted = deletedTransactions.filter((item) => !removable.has(item.id));
+    saveDeletedTransactions(nextDeleted);
+    setDeletedTransactions(nextDeleted);
+    setNotice(`${removable.size} ${removable.size === 1 ? "entry" : "entries"} deleted permanently.`);
   };
 
   const saveCategoryOrder = async (ordered: LedgerCategory[]) => {
@@ -504,7 +564,8 @@ export function LedgerApp() {
           <NavItem active={view === "overview"} icon="⌂" label="Today" onClick={() => setView("overview")} />
           <NavItem active={view === "reports"} icon="↗" label="Reports" onClick={() => setView("reports")} />
           <NavItem active={view === "transactions"} icon="≡" label="Transactions" onClick={() => { setTransactionFocusDate(null); setView("transactions"); }} />
-          <NavItem active={view === "personalization"} icon="✎" label="Personalization" onClick={() => setView("personalization")} />
+          <NavItem active={view === "deleted"} icon="⌫" label="Recently Deleted" onClick={() => setView("deleted")} />
+            <NavItem active={view === "personalization"} icon="✎" label="Personalization" onClick={() => setView("personalization")} />
         </nav>
         <div className="sidebar-foot">
           <div className="sync-dot"><span /> Saved on this device</div>
@@ -515,8 +576,8 @@ export function LedgerApp() {
       <section className="workspace">
         <header className="topbar">
           <div>
-            <p className="eyebrow">{view === "overview" ? "Today under southern skies" : view === "reports" ? "Spending insights" : view === "transactions" ? "Detailed ledger" : "Make it yours"}</p>
-            <h1>{view === "overview" ? "Money, in a clearer light." : view === "reports" ? "Where did the money go?" : view === "transactions" ? "Every entry, in one place." : "Your quickest categories."}</h1>
+            <p className="eyebrow">{view === "overview" ? "Today under southern skies" : view === "reports" ? "Spending insights" : view === "transactions" ? "Detailed ledger" : view === "deleted" ? "Recoverable entries" : "Make it yours"}</p>
+            <h1>{view === "overview" ? "Money, in a clearer light." : view === "reports" ? "Where did the money go?" : view === "transactions" ? "Every entry, in one place." : view === "deleted" ? `Deleted in the last ${deletedRetentionDays} days.` : "Your quickest categories."}</h1>
           </div>
           <div className="topbar-actions"><span className="access-badge owner">Local only</span><button type="button" className={`privacy-toggle ${incomeHidden ? "hidden" : "shown"}`} onClick={() => incomeHidden ? setPrivacyUnlockOpen(true) : hideIncome()} aria-pressed={!incomeHidden}><span aria-hidden="true">{incomeHidden ? "◉" : "◎"}</span>{incomeHidden ? "Income hidden" : "Income shown"}</button>{view === "reports" && <button className="personalize-shortcut" onClick={() => setView("personalization")}>Personalize</button>}<button className="add-button" onClick={() => setDrawerOpen(true)}><span>＋</span> Add transaction</button></div>
         </header>
@@ -579,6 +640,8 @@ export function LedgerApp() {
         )}
 
         {view === "transactions" && <TransactionsPanel groups={reportGroups} focusDate={transactionFocusDate} currency={currency} categoryEmoji={categoryEmoji} onEdit={setEditingTransaction} onExport={exportCsv} onImport={importCsv} onAdd={() => setDrawerOpen(true)} />}
+
+        {view === "deleted" && <RecentlyDeletedPanel items={visibleDeleted} categoryEmoji={categoryEmoji} retentionDays={deletedRetentionDays} onRestore={restoreTransaction} onPurge={purgeTransaction} onPurgeAll={purgeAllTransactions} />}
 
         {view === "personalization" && <PersonalizationPanel key={incomeHidden ? "income-hidden" : "income-shown"} categories={categories} incomeHidden={incomeHidden} themePreference={themePreference} palettePreference={palettePreference} onThemeChange={updateThemePreference} onPaletteChange={updatePalettePreference} onReorder={saveCategoryOrder} onSave={saveCategory} onRemove={removeCategory} />}
 
@@ -1351,4 +1414,40 @@ function BrandMark({ className }: { className: string }) {
       <rect x="334" y="130" width="48" height="250" rx="24" fill="#ffffff" />
     </svg>
   );
+}
+
+function RecentlyDeletedPanel({ items, categoryEmoji, retentionDays, onRestore, onPurge, onPurgeAll }: {
+  items: DeletedTransaction[];
+  categoryEmoji: (name: string) => string;
+  retentionDays: number;
+  onRestore: (id: string) => Promise<void>;
+  onPurge: (id: string) => Promise<void>;
+  onPurgeAll: () => Promise<void>;
+}) {
+  const [confirmingPurgeAll, setConfirmingPurgeAll] = useState(false);
+  const ordered = useMemo(() => [...items].sort((left, right) => right.deletedAt.localeCompare(left.deletedAt)), [items]);
+
+  return <div className="transactions-page">
+    <section className="report-table-card entry-ledger-card">
+      <div className="ledger-toolbar">
+        <div><p>Recently deleted</p><h2>{ordered.length} recoverable {ordered.length === 1 ? "entry" : "entries"}</h2><span>Entries are kept for {retentionDays} days, then removed for good</span></div>
+        {ordered.length > 0 && <div className="csv-actions"><button type="button" className="csv-button danger-button" onClick={() => { if (!confirmingPurgeAll) { setConfirmingPurgeAll(true); return; } setConfirmingPurgeAll(false); void onPurgeAll(); }} onBlur={() => setConfirmingPurgeAll(false)}>{confirmingPurgeAll ? "Click again to confirm" : "Delete all permanently"}</button></div>}
+      </div>
+      {ordered.length ? <div className="deleted-list">
+        {ordered.map((item) => {
+          const elapsed = Math.floor((Date.now() - Date.parse(item.deletedAt)) / 86400000);
+          const daysLeft = Math.max(0, retentionDays - elapsed);
+          return <div className="deleted-row" key={item.id}>
+            <div className="category-icon" style={{ background: `${categoryMeta[item.category]?.color ?? categoryMeta.Other.color}30` }}>{categoryEmoji(item.category)}</div>
+            <div className="deleted-copy"><h3>{displayNote(item.note, "Untitled entry")}</h3><p>{item.category} · {item.account} · {longDate(item.occurredAt)}</p></div>
+            <div className={`deleted-amount ${item.type}`}><strong>{item.type === "income" ? "+" : "−"}{money(item.amountCents, item.currency)}</strong><span>{daysLeft === 0 ? "Removed today" : `${daysLeft} ${daysLeft === 1 ? "day" : "days"} left`}</span></div>
+            <div className="deleted-actions">
+              <button type="button" className="deleted-restore" onClick={() => void onRestore(item.id)}>Restore</button>
+              <button type="button" className="deleted-purge" onClick={() => void onPurge(item.id)} aria-label={`Delete ${displayNote(item.note, "entry")} permanently`}>Delete</button>
+            </div>
+          </div>;
+        })}
+      </div> : <div className="empty-state"><span>🗂</span><h3>Nothing deleted recently</h3><p>Entries you delete are kept here for {retentionDays} days, so a mistake is always recoverable.</p></div>}
+    </section>
+  </div>;
 }
