@@ -152,7 +152,7 @@ test("the activity heatmap only marks days that moved money", async () => {
   assert.match(styles, /\.activity-income-pill\.level-0 \{ display: none; \}/);
 });
 
-test("deleting an entry parks it in Recently Deleted instead of dropping it", async () => {
+test("deleting an entry parks it in the Bin instead of dropping it", async () => {
   const [app, styles] = await Promise.all([
     readFile(new URL("app/ledger-app.tsx", root), "utf8"),
     readFile(new URL("app/globals.css", root), "utf8"),
@@ -170,10 +170,15 @@ test("deleting an entry parks it in Recently Deleted instead of dropping it", as
   assert.match(app, /const purgeAllTransactions = async \(\)/);
   assert.match(app, /const visibleDeleted = useMemo\(\(\) => incomeHidden/);
   // Reachable from the sidebar and rendered by its own panel.
-  assert.match(app, /label="Recently Deleted" onClick=\{\(\) => setView\("deleted"\)\}/);
-  assert.match(app, /function RecentlyDeletedPanel/);
+  assert.match(app, /label="Bin" onClick=\{\(\) => setView\("deleted"\)\}/);
+  assert.match(app, /function BinPanel/);
   assert.match(app, /type View = "overview" \| "reports" \| "transactions" \| "deleted" \| "personalization";/);
   assert.match(styles, /\.deleted-row \{/);
+  // The nav entry carries a drawn icon, sized against the neighbouring glyphs.
+  assert.match(app, /function BinIcon\(\)/);
+  assert.match(app, /icon=\{<BinIcon \/>\}/);
+  assert.match(app, /icon: ReactNode/);
+  assert.match(styles, /\.main-nav button span svg, \.mobile-nav button span svg/);
 });
 
 test("mobile Settings carries the bin the sidebar shows on desktop", async () => {
@@ -185,10 +190,10 @@ test("mobile Settings carries the bin the sidebar shows on desktop", async () =>
   // The mobile tab is Settings now, and the desktop sidebar keeps its own entry.
   assert.match(app, /label="Settings" onClick=\{\(\) => setView\("personalization"\)\}/);
   assert.doesNotMatch(app, /label="Personalize"/);
-  assert.match(app, /label="Recently Deleted" onClick=\{\(\) => setView\("deleted"\)\}/);
+  assert.match(app, /label="Bin" onClick=\{\(\) => setView\("deleted"\)\}/);
   // The bin is passed in as a slot and rendered after the category editor card.
-  assert.match(app, /recentlyDeleted: ReactNode/);
-  assert.match(app, /<div className="settings-deleted">\{recentlyDeleted\}<\/div>/);
+  assert.match(app, /bin: ReactNode/);
+  assert.match(app, /<div className="settings-deleted">\{bin\}<\/div>/);
   // Hidden by default, revealed only where the sidebar is gone.
   assert.match(styles, /\.settings-deleted \{ display: none; \}/);
   assert.match(styles, /\.sidebar \{ display: none; \}\.settings-deleted \{ display: block; \}/);
