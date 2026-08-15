@@ -175,3 +175,21 @@ test("deleting an entry parks it in Recently Deleted instead of dropping it", as
   assert.match(app, /type View = "overview" \| "reports" \| "transactions" \| "deleted" \| "personalization";/);
   assert.match(styles, /\.deleted-row \{/);
 });
+
+test("mobile Settings carries the bin the sidebar shows on desktop", async () => {
+  const [app, styles] = await Promise.all([
+    readFile(new URL("app/ledger-app.tsx", root), "utf8"),
+    readFile(new URL("app/globals.css", root), "utf8"),
+  ]);
+
+  // The mobile tab is Settings now, and the desktop sidebar keeps its own entry.
+  assert.match(app, /label="Settings" onClick=\{\(\) => setView\("personalization"\)\}/);
+  assert.doesNotMatch(app, /label="Personalize"/);
+  assert.match(app, /label="Recently Deleted" onClick=\{\(\) => setView\("deleted"\)\}/);
+  // The bin is passed in as a slot and rendered after the category editor card.
+  assert.match(app, /recentlyDeleted: ReactNode/);
+  assert.match(app, /<div className="settings-deleted">\{recentlyDeleted\}<\/div>/);
+  // Hidden by default, revealed only where the sidebar is gone.
+  assert.match(styles, /\.settings-deleted \{ display: none; \}/);
+  assert.match(styles, /\.sidebar \{ display: none; \}\.settings-deleted \{ display: block; \}/);
+});
