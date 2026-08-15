@@ -403,7 +403,11 @@ export function LedgerApp() {
     anchor.download = incomeHidden ? `bros-ledger-expenses-only-${today}.csv` : `bros-ledger-${today}.csv`;
     anchor.click();
     URL.revokeObjectURL(url);
-    setNotice(incomeHidden ? "Expense-only CSV exported. Income remains hidden." : "CSV exported.");
+    const exported = visibleTransactions.length;
+    const withheld = transactions.length - exported;
+    setNotice(withheld
+      ? `${exported} expense${exported === 1 ? "" : "s"} exported. ${withheld} income ${withheld === 1 ? "entry is" : "entries are"} withheld while income is hidden \u2014 unlock income to include ${withheld === 1 ? "it" : "them"}.`
+      : `${exported} transaction${exported === 1 ? "" : "s"} exported.`);
   };
 
   const importCsv = async (file: File) => {
@@ -551,6 +555,7 @@ export function LedgerApp() {
               <div className="transaction-list">
                 {loading ? <div className="empty-state">Opening your ledger…</div> : selectedItems.length ? selectedItems.map((item) => (
                   <article className="transaction" key={item.id}>
+                  <button type="button" className="transaction-open" onClick={() => setEditingTransaction(item)} aria-label={`Edit ${displayNote(item.note, "entry")}, ${item.category}, ${money(item.amountCents, item.currency)}`} />
                     <div className="category-icon" style={{ background: `${categoryMeta[item.category]?.color ?? categoryMeta.Other.color}30` }}>{categoryEmoji(item.category)}</div>
                     <div className="transaction-copy"><h3>{displayNote(item.note, "Untitled entry")}</h3><p>{item.category} · {item.account}</p></div>
                     <div className={`transaction-amount ${item.type}`}><strong>{item.type === "income" ? "+" : "−"}{money(item.amountCents, item.currency)}</strong></div>
