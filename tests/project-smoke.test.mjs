@@ -135,3 +135,19 @@ test("declares icons that survive an install to the home screen", async () => {
   assert.match(manifest, /src: "\/icon-maskable-512\.png", sizes: "512x512", type: "image\/png", purpose: "maskable"/);
   assert.match(favicon, /viewBox="0 0 512 512"/);
 });
+
+test("the activity heatmap only marks days that moved money", async () => {
+  const [app, styles] = await Promise.all([
+    readFile(new URL("app/ledger-app.tsx", root), "utf8"),
+    readFile(new URL("app/globals.css", root), "utf8"),
+  ]);
+
+  // A single-type view must not fall through to the view name, or every day in
+  // the range renders as activity regardless of whether anything happened.
+  assert.match(app, /const hasExpense = item\.expense > 0;/);
+  assert.match(app, /const hasIncome = item\.income > 0;/);
+  assert.doesNotMatch(app, /: "" : effectiveActivityView;/);
+  assert.match(app, /effectiveActivityView === "expense" \? hasExpense \? "expense" : "" : hasIncome \? "income" : ""/);
+  // Belt and braces: a zero-level pill must not paint even if one is rendered.
+  assert.match(styles, /\.activity-income-pill\.level-0 \{ display: none; \}/);
+});
