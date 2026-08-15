@@ -811,8 +811,12 @@ function ReportsPanel({ transactions, selectedDate, currency, categoryEmoji, inc
         {activity.map((item) => {
           const expenseLevel = activityLevel(item.expense, expenseActivityMax);
           const incomeLevel = activityLevel(item.income, incomeActivityMax);
-          const hasBoth = effectiveActivityView === "both" && item.expense > 0 && item.income > 0;
-          const singleType = effectiveActivityView === "both" ? item.expense > 0 ? "expense" : item.income > 0 ? "income" : "" : effectiveActivityView;
+          const hasExpense = item.expense > 0;
+          const hasIncome = item.income > 0;
+          const hasBoth = effectiveActivityView === "both" && hasExpense && hasIncome;
+          // A cell may only claim a type when that type actually moved money that day.
+          // Falling through to effectiveActivityView marked every single day as activity.
+          const singleType = effectiveActivityView === "both" ? hasExpense ? "expense" : hasIncome ? "income" : "" : effectiveActivityView === "expense" ? hasExpense ? "expense" : "" : hasIncome ? "income" : "";
           const singleLevel = singleType === "expense" ? expenseLevel : singleType === "income" ? incomeLevel : 0;
           const cellClass = hasBoth ? `expense level-${expenseLevel} has-income` : singleType === "expense" ? `expense level-${singleLevel}` : singleType === "income" ? "income-only" : "";
           const description = effectiveActivityView === "expense"
