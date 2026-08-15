@@ -489,7 +489,7 @@ export function LedgerApp() {
       saveDeletedTransactions(nextDeleted);
       setDeletedTransactions(nextDeleted);
     }
-    setNotice(`Moved to Recently Deleted. Kept for ${deletedRetentionDays} days.`);
+    setNotice(`Moved to the Bin. Kept for ${deletedRetentionDays} days.`);
   };
 
   const restoreTransaction = async (id: string) => {
@@ -564,7 +564,7 @@ export function LedgerApp() {
           <NavItem active={view === "overview"} icon="⌂" label="Today" onClick={() => setView("overview")} />
           <NavItem active={view === "reports"} icon="↗" label="Reports" onClick={() => setView("reports")} />
           <NavItem active={view === "transactions"} icon="≡" label="Transactions" onClick={() => { setTransactionFocusDate(null); setView("transactions"); }} />
-          <NavItem active={view === "deleted"} icon="⌫" label="Recently Deleted" onClick={() => setView("deleted")} />
+          <NavItem active={view === "deleted"} icon={<BinIcon />} label="Bin" onClick={() => setView("deleted")} />
             <NavItem active={view === "personalization"} icon="✎" label="Personalization" onClick={() => setView("personalization")} />
         </nav>
         <div className="sidebar-foot">
@@ -641,9 +641,9 @@ export function LedgerApp() {
 
         {view === "transactions" && <TransactionsPanel groups={reportGroups} focusDate={transactionFocusDate} currency={currency} categoryEmoji={categoryEmoji} onEdit={setEditingTransaction} onExport={exportCsv} onImport={importCsv} onAdd={() => setDrawerOpen(true)} />}
 
-        {view === "deleted" && <RecentlyDeletedPanel items={visibleDeleted} categoryEmoji={categoryEmoji} retentionDays={deletedRetentionDays} onRestore={restoreTransaction} onPurge={purgeTransaction} onPurgeAll={purgeAllTransactions} />}
+        {view === "deleted" && <BinPanel items={visibleDeleted} categoryEmoji={categoryEmoji} retentionDays={deletedRetentionDays} onRestore={restoreTransaction} onPurge={purgeTransaction} onPurgeAll={purgeAllTransactions} />}
 
-        {view === "personalization" && <PersonalizationPanel key={incomeHidden ? "income-hidden" : "income-shown"} categories={categories} incomeHidden={incomeHidden} themePreference={themePreference} palettePreference={palettePreference} onThemeChange={updateThemePreference} onPaletteChange={updatePalettePreference} onReorder={saveCategoryOrder} onSave={saveCategory} onRemove={removeCategory} recentlyDeleted={<RecentlyDeletedPanel items={visibleDeleted} categoryEmoji={categoryEmoji} retentionDays={deletedRetentionDays} onRestore={restoreTransaction} onPurge={purgeTransaction} onPurgeAll={purgeAllTransactions} />} />}
+        {view === "personalization" && <PersonalizationPanel key={incomeHidden ? "income-hidden" : "income-shown"} categories={categories} incomeHidden={incomeHidden} themePreference={themePreference} palettePreference={palettePreference} onThemeChange={updateThemePreference} onPaletteChange={updatePalettePreference} onReorder={saveCategoryOrder} onSave={saveCategory} onRemove={removeCategory} bin={<BinPanel items={visibleDeleted} categoryEmoji={categoryEmoji} retentionDays={deletedRetentionDays} onRestore={restoreTransaction} onPurge={purgeTransaction} onPurgeAll={purgeAllTransactions} />} />}
 
       </section>
 
@@ -1101,7 +1101,7 @@ function IncomePrivacyUnlock({ onClose, onUnlocked }: { onClose: () => void; onU
   </div>;
 }
 
-function PersonalizationPanel({ categories, incomeHidden, themePreference, palettePreference, onThemeChange, onPaletteChange, onReorder, onSave, onRemove, recentlyDeleted }: { categories: LedgerCategory[]; incomeHidden: boolean; themePreference: ThemePreference; palettePreference: PalettePreference; onThemeChange: (preference: ThemePreference) => void; onPaletteChange: (preference: PalettePreference) => void; onReorder: (categories: LedgerCategory[]) => Promise<void>; onSave: (draft: Omit<LedgerCategory, "id">, editing: LedgerCategory | null) => Promise<void>; onRemove: (id: string) => Promise<void>; recentlyDeleted: ReactNode }) {
+function PersonalizationPanel({ categories, incomeHidden, themePreference, palettePreference, onThemeChange, onPaletteChange, onReorder, onSave, onRemove, bin }: { categories: LedgerCategory[]; incomeHidden: boolean; themePreference: ThemePreference; palettePreference: PalettePreference; onThemeChange: (preference: ThemePreference) => void; onPaletteChange: (preference: PalettePreference) => void; onReorder: (categories: LedgerCategory[]) => Promise<void>; onSave: (draft: Omit<LedgerCategory, "id">, editing: LedgerCategory | null) => Promise<void>; onRemove: (id: string) => Promise<void>; bin: ReactNode }) {
   const [editing, setEditing] = useState<LedgerCategory | null>(null);
   const [orderedCategories, setOrderedCategories] = useState(categories);
   const orderedCategoriesRef = useRef(categories);
@@ -1276,11 +1276,11 @@ function PersonalizationPanel({ categories, incomeHidden, themePreference, palet
         <div className="category-editor-actions">{editing && <button type="button" className="danger-button" onClick={remove} disabled={saving}>Remove</button>}<button className="save-category-button" disabled={saving}>{saving ? "Saving…" : editing ? "Save category" : "Add category"}</button></div>
       </form>
     </section>
-    <div className="settings-deleted">{recentlyDeleted}</div>
+    <div className="settings-deleted">{bin}</div>
   </div>;
 }
 
-function NavItem({ active, icon, label, onClick }: { active: boolean; icon: string; label: string; onClick: () => void }) {
+function NavItem({ active, icon, label, onClick }: { active: boolean; icon: ReactNode; label: string; onClick: () => void }) {
   return <button className={active ? "active" : ""} onClick={onClick}><span>{icon}</span><em>{label}</em></button>;
 }
 
@@ -1417,7 +1417,7 @@ function BrandMark({ className }: { className: string }) {
   );
 }
 
-function RecentlyDeletedPanel({ items, categoryEmoji, retentionDays, onRestore, onPurge, onPurgeAll }: {
+function BinPanel({ items, categoryEmoji, retentionDays, onRestore, onPurge, onPurgeAll }: {
   items: DeletedTransaction[];
   categoryEmoji: (name: string) => string;
   retentionDays: number;
@@ -1431,7 +1431,7 @@ function RecentlyDeletedPanel({ items, categoryEmoji, retentionDays, onRestore, 
   return <div className="transactions-page">
     <section className="report-table-card entry-ledger-card">
       <div className="ledger-toolbar">
-        <div><p>Recently deleted</p><h2>{ordered.length} recoverable {ordered.length === 1 ? "entry" : "entries"}</h2><span>Entries are kept for {retentionDays} days, then removed for good</span></div>
+        <div><p>Bin</p><h2>{ordered.length} recoverable {ordered.length === 1 ? "entry" : "entries"}</h2><span>Entries are kept for {retentionDays} days, then removed for good</span></div>
         {ordered.length > 0 && <div className="csv-actions"><button type="button" className="csv-button danger-button" onClick={() => { if (!confirmingPurgeAll) { setConfirmingPurgeAll(true); return; } setConfirmingPurgeAll(false); void onPurgeAll(); }} onBlur={() => setConfirmingPurgeAll(false)}>{confirmingPurgeAll ? "Click again to confirm" : "Delete all permanently"}</button></div>}
       </div>
       {ordered.length ? <div className="deleted-list">
@@ -1448,7 +1448,19 @@ function RecentlyDeletedPanel({ items, categoryEmoji, retentionDays, onRestore, 
             </div>
           </div>;
         })}
-      </div> : <div className="empty-state"><span>🗂</span><h3>Nothing deleted recently</h3><p>Entries you delete are kept here for {retentionDays} days, so a mistake is always recoverable.</p></div>}
+      </div> : <div className="empty-state"><span>🗂</span><h3>The bin is empty</h3><p>Entries you delete are kept here for {retentionDays} days, so a mistake is always recoverable.</p></div>}
     </section>
   </div>;
+}
+
+function BinIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M4 6.5h16" />
+      <path d="M9.5 6.5V5A1.5 1.5 0 0 1 11 3.5h2A1.5 1.5 0 0 1 14.5 5v1.5" />
+      <path d="M6.5 6.5l.8 12.2a1.8 1.8 0 0 0 1.8 1.7h5.8a1.8 1.8 0 0 0 1.8-1.7l.8-12.2" />
+      <path d="M10.4 10.4v6.4" />
+      <path d="M13.6 10.4v6.4" />
+    </svg>
+  );
 }
