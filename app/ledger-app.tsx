@@ -565,7 +565,7 @@ export function LedgerApp() {
           <NavItem active={view === "reports"} icon="↗" label="Reports" onClick={() => setView("reports")} />
           <NavItem active={view === "transactions"} icon="≡" label="Transactions" onClick={() => { setTransactionFocusDate(null); setView("transactions"); }} />
           <NavItem active={view === "deleted"} icon={<BinIcon />} label="Bin" onClick={() => setView("deleted")} />
-            <NavItem active={view === "personalization"} icon="✎" label="Personalization" onClick={() => setView("personalization")} />
+            <NavItem active={view === "personalization"} icon="✎" label="Settings" onClick={() => setView("personalization")} />
         </nav>
         <div className="sidebar-foot">
           <div className="sync-dot"><span /> Saved on this device</div>
@@ -579,7 +579,7 @@ export function LedgerApp() {
             <p className="eyebrow">{view === "overview" ? "Today under southern skies" : view === "reports" ? "Spending insights" : view === "transactions" ? "Detailed ledger" : view === "deleted" ? "Recoverable entries" : "Make it yours"}</p>
             <h1>{view === "overview" ? "Money, in a clearer light." : view === "reports" ? "Where did the money go?" : view === "transactions" ? "Every entry, in one place." : view === "deleted" ? `Deleted in the last ${deletedRetentionDays} days.` : "Your quickest categories."}</h1>
           </div>
-          <div className="topbar-actions"><span className="access-badge owner">Local only</span><button type="button" className={`privacy-toggle ${incomeHidden ? "hidden" : "shown"}`} onClick={() => incomeHidden ? setPrivacyUnlockOpen(true) : hideIncome()} aria-pressed={!incomeHidden}><span aria-hidden="true">{incomeHidden ? "◉" : "◎"}</span>{incomeHidden ? "Income hidden" : "Income shown"}</button>{view === "reports" && <button className="personalize-shortcut" onClick={() => setView("personalization")}>Personalize</button>}<button className="add-button" onClick={() => setDrawerOpen(true)}><span>＋</span> Add transaction</button></div>
+          <div className="topbar-actions"><span className="access-badge owner">Local only</span><button type="button" className={`privacy-toggle ${incomeHidden ? "hidden" : "shown"}`} onClick={() => incomeHidden ? setPrivacyUnlockOpen(true) : hideIncome()} aria-pressed={!incomeHidden}><span aria-hidden="true">{incomeHidden ? "◉" : "◎"}</span>{incomeHidden ? "Income hidden" : "Income shown"}</button>{view === "reports" && <button className="personalize-shortcut" onClick={() => setView("personalization")}>Settings</button>}<button className="add-button" onClick={() => setDrawerOpen(true)}><span>＋</span> Add transaction</button></div>
         </header>
 
         {notice && <div className="notice" role="status">{notice}<button onClick={() => setNotice("")}>×</button></div>}
