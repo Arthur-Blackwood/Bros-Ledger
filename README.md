@@ -33,7 +33,7 @@ Deleting an entry moves it to the Bin rather than discarding it. Each row shows 
 
 On desktop the Bin is its own sidebar section. On mobile — where the sidebar is hidden — it appears at the bottom of **Settings** instead, so there is no extra tab.
 
-### Personalization
+### Settings
 
 - Light, dark, or follow-the-system themes.
 - Six colour palettes: **mono** (the default), forest, ocean, indigo, plum and terracotta.
