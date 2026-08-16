@@ -190,6 +190,9 @@ test("mobile Settings carries the bin the sidebar shows on desktop", async () =>
   // The mobile tab is Settings now, and the desktop sidebar keeps its own entry.
   assert.match(app, /label="Settings" onClick=\{\(\) => setView\("personalization"\)\}/);
   assert.doesNotMatch(app, /label="Personalize"/);
+  assert.doesNotMatch(app, /label="Personalization"/);
+  // Both the sidebar and the mobile tab point at the same view.
+  assert.strictEqual(app.match(/label="Settings"/g).length, 2);
   assert.match(app, /label="Bin" onClick=\{\(\) => setView\("deleted"\)\}/);
   // The bin is passed in as a slot and rendered after the category editor card.
   assert.match(app, /bin: ReactNode/);
@@ -197,4 +200,5 @@ test("mobile Settings carries the bin the sidebar shows on desktop", async () =>
   // Hidden by default, revealed only where the sidebar is gone.
   assert.match(styles, /\.settings-deleted \{ display: none; \}/);
   assert.match(styles, /\.sidebar \{ display: none; \}\.settings-deleted \{ display: block; \}/);
+  assert.match(app, /className="personalize-shortcut"[\s\S]*?>Settings<\/button>/);
 });
