@@ -227,3 +227,29 @@ test("the currency is detected rather than hardcoded", async () => {
   // Entries keep the currency they were recorded in.
   assert.match(app, /money\(item\.amountCents, item\.currency\)/);
 });
+
+test("dates follow the reader locale and transactions are searchable", async () => {
+  const [app, styles] = await Promise.all([
+    readFile(new URL("app/ledger-app.tsx", root), "utf8"),
+    readFile(new URL("app/globals.css", root), "utf8"),
+  ]);
+
+  // No formatter may be pinned to one locale any more.
+  assert.doesNotMatch(app, /"en-AU"/);
+  assert.strictEqual(app.match(/new Intl\.DateTimeFormat\(undefined/g).length, 4);
+
+  // Search keeps typing on the urgent render and defers the filtering.
+  assert.match(app, /const deferredQuery = useDeferredValue\(query\)/);
+  assert.match(app, /useDeferredValue, useEffect/);
+  assert.match(app, /const visibleGroups = useMemo/);
+  // Every term must match, so multi-word queries narrow rather than widen.
+  assert.match(app, /terms\.every\(\(term\) => haystack\.includes\(term\)\)/);
+  // The list, the count and the scroll-to-day effect all read the filtered set.
+  assert.match(app, /\{visibleGroups\.map\(\(\[date, items\]\) => \{/);
+  assert.match(app, /const transactionCount = visibleGroups\.reduce/);
+  assert.match(app, /\}, \[focusDate, visibleGroups\]\);/);
+  assert.doesNotMatch(app, /\{groups\.map\(\(\[date, items\]\) => \{/);
+  // A search with no hits is distinguishable from an empty ledger.
+  assert.match(app, /<h3>No matches<\/h3>/);
+  assert.match(styles, /\.ledger-search-input \{/);
+});
