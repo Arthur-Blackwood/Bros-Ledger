@@ -38,10 +38,20 @@ On desktop the Bin is its own sidebar section. On mobile — where the sidebar i
 - Light, dark, or follow-the-system themes.
 - Six colour palettes: **mono** (the default), forest, ocean, indigo, plum and terracotta.
 - Custom categories with emoji, reorderable by drag.
+- **Currency** picked automatically from your time zone, with a full picker to override it.
+
+
+### Currency
+
+On first run the currency is inferred from your time zone, falling back to your browser locale and then to USD. Time zone is the better signal: a device set to `en-US` while living in Sydney should still default to AUD, and language alone would get that wrong.
+
+The full ISO 4217 list and its display names come from `Intl`, so no currency table is bundled for the picker. Decimal places follow each currency — yen and won correctly show none.
+
+Each transaction stores the currency it was recorded in, so changing the setting affects new entries and totals without relabelling your history.
 
 ## Privacy, honestly
 
-Everything genuinely stays on your device. The app makes no outbound network requests, sets no cookies, loads no third-party scripts or fonts, and never puts data in the URL. CSV export builds the file in memory and never uploads it. The whole ledger UI is a client component, so the server never receives your data.
+Everything genuinely stays on your device. Even currency detection is local — it reads your time zone through `Intl` rather than looking up your IP, so nothing is requested from a geolocation service. The app makes no outbound network requests, sets no cookies, loads no third-party scripts or fonts, and never puts data in the URL. CSV export builds the file in memory and never uploads it. The whole ledger UI is a client component, so the server never receives your data.
 
 Because local storage is scoped to an origin and a browser profile, each browser, profile, device and private window keeps its own separate ledger. Nothing syncs between them.
 
@@ -98,6 +108,7 @@ Everything is stored under `bros-ledger:*` keys in the browser’s local storage
 | `bros-ledger:privacy-pin-salt:v1` | Salt for that hash |
 | `bros-ledger:theme:v1` | Theme preference |
 | `bros-ledger:palette:v1` | Colour palette preference |
+| `bros-ledger:currency:v1` | Display currency |
 | `bros-ledger:week-outlier-filter:v1` | Seven-day chart outlier setting |
 | `bros-ledger:report-chart-preferences:v1` | Saved report chart settings |
 
