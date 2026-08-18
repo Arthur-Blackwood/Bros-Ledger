@@ -36,6 +36,66 @@ const privacyPinHashKey = "bros-ledger:privacy-pin-hash:v1";
 const privacyPinSaltKey = "bros-ledger:privacy-pin-salt:v1";
 const deletedTransactionsKey = "bros-ledger:deleted-transactions:v1";
 const deletedRetentionDays = 30;
+const currencyPreferenceKey = "bros-ledger:currency:v1";
+const fallbackCurrency = "USD";
+
+// ISO 3166 region to ISO 4217 currency. Intl exposes every other piece we need
+// (the currency list, display names, per-currency decimal places) but not this.
+const regionCurrencies = "AD:EUR,AE:AED,AF:AFN,AG:XCD,AL:ALL,AM:AMD,AO:AOA,AR:ARS,AT:EUR,AU:AUD,AW:AWG,AZ:AZN,BA:BAM,BB:BBD,BD:BDT,BE:EUR,BF:XOF,BG:BGN,BH:BHD,BI:BIF,BJ:XOF,BM:BMD,BN:BND,BO:BOB,BR:BRL,BS:BSD,BT:BTN,BW:BWP,BY:BYN,BZ:BZD,CA:CAD,CD:CDF,CF:XAF,CG:XAF,CH:CHF,CI:XOF,CL:CLP,CM:XAF,CN:CNY,CO:COP,CR:CRC,CU:CUP,CV:CVE,CY:EUR,CZ:CZK,DE:EUR,DJ:DJF,DK:DKK,DM:XCD,DO:DOP,DZ:DZD,EC:USD,EE:EUR,EG:EGP,ER:ERN,ES:EUR,ET:ETB,FI:EUR,FJ:FJD,FM:USD,FR:EUR,GA:XAF,GB:GBP,GD:XCD,GE:GEL,GH:GHS,GI:GIP,GL:DKK,GM:GMD,GN:GNF,GQ:XAF,GR:EUR,GT:GTQ,GU:USD,GW:XOF,GY:GYD,HK:HKD,HN:HNL,HR:EUR,HT:HTG,HU:HUF,ID:IDR,IE:EUR,IL:ILS,IN:INR,IQ:IQD,IR:IRR,IS:ISK,IT:EUR,JM:JMD,JO:JOD,JP:JPY,KE:KES,KG:KGS,KH:KHR,KI:AUD,KM:KMF,KP:KPW,KR:KRW,KW:KWD,KY:KYD,KZ:KZT,LA:LAK,LB:LBP,LI:CHF,LK:LKR,LR:LRD,LS:LSL,LT:EUR,LU:EUR,LV:EUR,LY:LYD,MA:MAD,MC:EUR,MD:MDL,ME:EUR,MG:MGA,MH:USD,MK:MKD,ML:XOF,MM:MMK,MN:MNT,MO:MOP,MR:MRU,MT:EUR,MU:MUR,MV:MVR,MW:MWK,MX:MXN,MY:MYR,MZ:MZN,NA:NAD,NC:XPF,NE:XOF,NG:NGN,NI:NIO,NL:EUR,NO:NOK,NP:NPR,NZ:NZD,OM:OMR,PA:PAB,PE:PEN,PF:XPF,PG:PGK,PH:PHP,PK:PKR,PL:PLN,PR:USD,PS:ILS,PT:EUR,PW:USD,PY:PYG,QA:QAR,RO:RON,RS:RSD,RU:RUB,RW:RWF,SA:SAR,SB:SBD,SC:SCR,SD:SDG,SE:SEK,SG:SGD,SI:EUR,SK:EUR,SL:SLE,SM:EUR,SN:XOF,SO:SOS,SR:SRD,SS:SSP,ST:STN,SV:USD,SY:SYP,SZ:SZL,TD:XAF,TG:XOF,TH:THB,TJ:TJS,TL:USD,TM:TMT,TN:TND,TO:TOP,TR:TRY,TT:TTD,TW:TWD,TZ:TZS,UA:UAH,UG:UGX,US:USD,UY:UYU,UZ:UZS,VA:EUR,VE:VES,VI:USD,VN:VND,VU:VUV,WF:XPF,WS:WST,YE:YER,ZA:ZAR,ZM:ZMW,ZW:ZWG";
+const regionCurrency = new Map(regionCurrencies.split(",").map((pair) => pair.split(":") as [string, string]));
+
+// Time zone beats UI language for guessing money: a device set to en-US in Sydney
+// should still default to AUD. Built from Intl at runtime rather than shipped as
+// a table, and only ever computed once, on a first run with no saved preference.
+let zoneRegions: Map<string, string> | null = null;
+const buildZoneRegions = () => {
+  const zones = new Map<string, string>();
+  for (const region of regionCurrency.keys()) {
+    try {
+      const locale = new Intl.Locale("und-" + region) as Intl.Locale & { getTimeZones?: () => string[] | undefined };
+      for (const zone of locale.getTimeZones?.() ?? []) if (!zones.has(zone)) zones.set(zone, region);
+    } catch { /* region unknown to this engine, skip it */ }
+  }
+  return zones;
+};
+
+const detectCurrency = () => {
+  try {
+    zoneRegions ??= buildZoneRegions();
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const byZone = zone ? zoneRegions.get(zone) : undefined;
+    if (byZone && regionCurrency.has(byZone)) return regionCurrency.get(byZone)!;
+    const region = new Intl.Locale(navigator.language).maximize().region;
+    if (region && regionCurrency.has(region)) return regionCurrency.get(region)!;
+  } catch { /* fall through to the default below */ }
+  return fallbackCurrency;
+};
+
+const currencyOptions = () => {
+  try {
+    const supported = (Intl as typeof Intl & { supportedValuesOf?: (key: string) => string[] }).supportedValuesOf?.("currency");
+    if (supported?.length) return supported;
+  } catch { /* fall through */ }
+  return [...new Set(regionCurrency.values())].sort();
+};
+
+const currencyLabel = (code: string) => {
+  try { return new Intl.DisplayNames(undefined, { type: "currency" }).of(code) ?? code; }
+  catch { return code; }
+};
+
+const readCurrencyPreference = () => {
+  if (typeof window === "undefined") return fallbackCurrency;
+  try {
+    const saved = window.localStorage.getItem(currencyPreferenceKey);
+    if (saved) return saved;
+    const detected = detectCurrency();
+    window.localStorage.setItem(currencyPreferenceKey, detected);
+    return detected;
+  } catch {
+    return fallbackCurrency;
+  }
+};
 
 const starterCategoryTemplates: Array<[string, string, CategoryType]> = [
   ["Shopping", "🛍️", "expense"], ["Health", "💪", "expense"], ["Subscription", "🔔", "expense"],
@@ -120,7 +180,7 @@ const parseCsvRows = (text: string) => {
   return rows.filter((item) => item.some((value) => value.trim()));
 };
 
-const transactionsFromCsv = (text: string) => {
+const transactionsFromCsv = (text: string, currency: string) => {
   const rows = parseCsvRows(text.replace(/^\uFEFF/, ""));
   if (rows.length < 2) throw new Error("The CSV file has no transactions.");
   const headers = rows[0].map((value) => value.trim().toLowerCase());
@@ -134,7 +194,7 @@ const transactionsFromCsv = (text: string) => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(occurredAt) || !Number.isFinite(amount) || amount === 0) throw new Error(`CSV row ${rowIndex + 2} has an invalid date or amount.`);
     const type: Transaction["type"] = amount > 0 ? "income" : "expense";
     return {
-      id: crypto.randomUUID(), occurredAt, type, amountCents: Math.round(Math.abs(amount) * 100), currency: "AUD",
+      id: crypto.randomUUID(), occurredAt, type, amountCents: Math.round(Math.abs(amount) * 100), currency,
       category: row[indexes.category]?.trim() || (type === "income" ? "Income" : "Other"),
       note: row[indexes.note] ?? "", account: row[indexes.account]?.trim() || "Everyday", tags: [], source: "csv",
     } satisfies Transaction;
@@ -248,9 +308,9 @@ const dateShift = (dateKey: string, amount: number) => {
   return toDateKey(date);
 };
 
-const money = (cents: number, currency = "AUD", signed = false) => {
+const money = (cents: number, currency = fallbackCurrency, signed = false) => {
   const value = cents / 100;
-  const text = new Intl.NumberFormat("en-AU", { style: "currency", currency, minimumFractionDigits: 2 }).format(Math.abs(value));
+  const text = new Intl.NumberFormat(undefined, { style: "currency", currency }).format(Math.abs(value));
   if (!signed || cents === 0) return text;
   return `${cents > 0 ? "+" : "−"}${text}`;
 };
@@ -305,6 +365,7 @@ export function LedgerApp() {
   const [privacyUnlockOpen, setPrivacyUnlockOpen] = useState(false);
   const [themePreference, setThemePreference] = useState<ThemePreference>(readThemePreference);
   const [palettePreference, setPalettePreference] = useState<PalettePreference>(readPalettePreference);
+  const [currencyPreference, setCurrencyPreference] = useState<string>(readCurrencyPreference);
   const [weekFilterOutliers, setWeekFilterOutliers] = useState(() => typeof window !== "undefined" && window.localStorage.getItem(weekOutlierFilterKey) === "true");
   const [transactionFocusDate, setTransactionFocusDate] = useState<string | null>(null);
 
@@ -329,6 +390,11 @@ export function LedgerApp() {
     try { window.localStorage.setItem(themePreferenceKey, preference); } catch { /* Keep the theme for this visit. */ }
   };
 
+  const updateCurrencyPreference = (next: string) => {
+    setCurrencyPreference(next);
+    try { window.localStorage.setItem(currencyPreferenceKey, next); } catch { /* Keep the currency for this visit. */ }
+  };
+
   const updatePalettePreference = (preference: PalettePreference) => {
     setPalettePreference(preference);
     try { window.localStorage.setItem(palettePreferenceKey, preference); } catch { /* Keep the palette for this visit. */ }
@@ -348,7 +414,7 @@ export function LedgerApp() {
   // The bin honours the income lock too, so hidden income cannot leak out through it.
   const visibleDeleted = useMemo(() => incomeHidden ? deletedTransactions.filter((item) => item.type === "expense") : deletedTransactions, [deletedTransactions, incomeHidden]);
   const categoryEmoji = (name: string) => categories.find((category) => category.name === name)?.emoji ?? categoryMeta[name]?.emoji ?? "✨";
-  const currency = visibleTransactions[0]?.currency ?? "AUD";
+  const currency = currencyPreference;
   const selectedItems = visibleTransactions.filter((item) => item.occurredAt === selectedDate);
   const selectedExpense = selectedItems.filter((item) => item.type === "expense").reduce((sum, item) => sum + item.amountCents, 0);
   const selectedIncome = selectedItems.filter((item) => item.type === "income").reduce((sum, item) => sum + item.amountCents, 0);
@@ -432,7 +498,7 @@ export function LedgerApp() {
   };
 
   const importCsv = async (file: File) => {
-    const imported = transactionsFromCsv(await file.text());
+    const imported = transactionsFromCsv(await file.text(), currencyPreference);
     const nextTransactions = [...imported, ...transactions];
     saveLocalTransactions(nextTransactions);
     setTransactions(nextTransactions);
@@ -451,7 +517,7 @@ export function LedgerApp() {
     if (!Number.isFinite(draft.amount) || draft.amount <= 0) throw new Error("Enter an amount greater than zero.");
     const transaction: Transaction = {
       id: crypto.randomUUID(), occurredAt: draft.date, type: draft.type, amountCents: Math.round(draft.amount * 100),
-      currency: "AUD", category: draft.category, account: draft.account.trim() || "Everyday", note: draft.note, tags: [], source: "manual",
+      currency: currencyPreference, category: draft.category, account: draft.account.trim() || "Everyday", note: draft.note, tags: [], source: "manual",
     };
     const next = [transaction, ...transactions];
     saveLocalTransactions(next);
@@ -643,7 +709,7 @@ export function LedgerApp() {
 
         {view === "deleted" && <BinPanel items={visibleDeleted} categoryEmoji={categoryEmoji} retentionDays={deletedRetentionDays} onRestore={restoreTransaction} onPurge={purgeTransaction} onPurgeAll={purgeAllTransactions} />}
 
-        {view === "personalization" && <PersonalizationPanel key={incomeHidden ? "income-hidden" : "income-shown"} categories={categories} incomeHidden={incomeHidden} themePreference={themePreference} palettePreference={palettePreference} onThemeChange={updateThemePreference} onPaletteChange={updatePalettePreference} onReorder={saveCategoryOrder} onSave={saveCategory} onRemove={removeCategory} bin={<BinPanel items={visibleDeleted} categoryEmoji={categoryEmoji} retentionDays={deletedRetentionDays} onRestore={restoreTransaction} onPurge={purgeTransaction} onPurgeAll={purgeAllTransactions} />} />}
+        {view === "personalization" && <PersonalizationPanel key={incomeHidden ? "income-hidden" : "income-shown"} categories={categories} incomeHidden={incomeHidden} themePreference={themePreference} palettePreference={palettePreference} onThemeChange={updateThemePreference} onPaletteChange={updatePalettePreference} onReorder={saveCategoryOrder} onSave={saveCategory} onRemove={removeCategory} currencyPreference={currencyPreference} onCurrencyChange={updateCurrencyPreference} bin={<BinPanel items={visibleDeleted} categoryEmoji={categoryEmoji} retentionDays={deletedRetentionDays} onRestore={restoreTransaction} onPurge={purgeTransaction} onPurgeAll={purgeAllTransactions} />} />}
 
       </section>
 
@@ -1101,7 +1167,7 @@ function IncomePrivacyUnlock({ onClose, onUnlocked }: { onClose: () => void; onU
   </div>;
 }
 
-function PersonalizationPanel({ categories, incomeHidden, themePreference, palettePreference, onThemeChange, onPaletteChange, onReorder, onSave, onRemove, bin }: { categories: LedgerCategory[]; incomeHidden: boolean; themePreference: ThemePreference; palettePreference: PalettePreference; onThemeChange: (preference: ThemePreference) => void; onPaletteChange: (preference: PalettePreference) => void; onReorder: (categories: LedgerCategory[]) => Promise<void>; onSave: (draft: Omit<LedgerCategory, "id">, editing: LedgerCategory | null) => Promise<void>; onRemove: (id: string) => Promise<void>; bin: ReactNode }) {
+function PersonalizationPanel({ categories, incomeHidden, themePreference, palettePreference, onThemeChange, onPaletteChange, onReorder, onSave, onRemove, bin, currencyPreference, onCurrencyChange }: { categories: LedgerCategory[]; incomeHidden: boolean; themePreference: ThemePreference; palettePreference: PalettePreference; onThemeChange: (preference: ThemePreference) => void; onPaletteChange: (preference: PalettePreference) => void; onReorder: (categories: LedgerCategory[]) => Promise<void>; onSave: (draft: Omit<LedgerCategory, "id">, editing: LedgerCategory | null) => Promise<void>; onRemove: (id: string) => Promise<void>; bin: ReactNode; currencyPreference: string; onCurrencyChange: (next: string) => void }) {
   const [editing, setEditing] = useState<LedgerCategory | null>(null);
   const [orderedCategories, setOrderedCategories] = useState(categories);
   const orderedCategoriesRef = useRef(categories);
@@ -1254,7 +1320,12 @@ function PersonalizationPanel({ categories, incomeHidden, themePreference, palet
       <div className="theme-options" role="radiogroup" aria-label="Application theme">
         {(["system", "light", "dark"] as ThemePreference[]).map((preference) => <button type="button" role="radio" aria-checked={themePreference === preference} className={themePreference === preference ? "active" : ""} key={preference} onClick={() => onThemeChange(preference)}><span aria-hidden="true">{preference === "system" ? "◐" : preference === "light" ? "☀" : "◑"}</span><strong>{preference[0].toUpperCase() + preference.slice(1)}</strong><small>{preference === "system" ? "Follow this device" : preference === "light" ? "Always light" : "Always dark"}</small></button>)}
       </div>
-      <h3 className="theme-subheading palette-heading">Colour palette</h3>
+      <h3 className="theme-subheading">Currency</h3>
+        <p className="theme-control-copy">Detected from your time zone. Existing entries keep the currency they were recorded in.</p>
+        <select className="currency-select" value={currencyPreference} onChange={(event) => onCurrencyChange(event.target.value)} aria-label="Display currency">
+          {currencyOptions().map((code) => <option key={code} value={code}>{code} · {currencyLabel(code)}</option>)}
+        </select>
+        <h3 className="theme-subheading palette-heading">Colour palette</h3>
       <div className="palette-options" role="radiogroup" aria-label="Application colour palette">
         {(["mono", "forest", "ocean", "indigo", "plum", "terracotta"] as PalettePreference[]).map((preference) => <button type="button" role="radio" aria-checked={palettePreference === preference} className={`palette-option palette-${preference} ${palettePreference === preference ? "active" : ""}`} key={preference} onClick={() => onPaletteChange(preference)}><span className="palette-preview" aria-hidden="true"><i /><i /><i /></span><strong>{preference[0].toUpperCase() + preference.slice(1)}</strong><small>{preference === "mono" ? "Ink and paper" : preference === "forest" ? "Sage and eucalyptus" : preference === "ocean" ? "Navy and sea glass" : preference === "indigo" ? "Ink and periwinkle" : preference === "plum" ? "Aubergine and rose" : "Clay and warm sand"}</small></button>)}
       </div>
