@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode, useDeferredValue, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 type Transaction = {
   id: string;
@@ -317,7 +317,7 @@ const money = (cents: number, currency = fallbackCurrency, signed = false) => {
 
 const displayNote = (note: string, fallback = "No note") => note.split(/\r?\n/, 1)[0].trim() || fallback;
 
-const longDate = (dateKey: string) => new Intl.DateTimeFormat("en-AU", {
+const longDate = (dateKey: string) => new Intl.DateTimeFormat(undefined, {
   month: "long", day: "numeric", weekday: "short",
 }).format(new Date(`${dateKey}T12:00:00`));
 
@@ -325,8 +325,8 @@ const explorerKey = (dateKey: string, group: ExplorerGroup) => group === "day" ?
 
 const explorerLabel = (key: string, group: ExplorerGroup) => {
   if (group === "year") return key;
-  if (group === "month") return new Intl.DateTimeFormat("en-AU", { month: "short", year: "2-digit" }).format(new Date(`${key}-01T12:00:00`));
-  return new Intl.DateTimeFormat("en-AU", { day: "numeric", month: "short" }).format(new Date(`${key}T12:00:00`));
+  if (group === "month") return new Intl.DateTimeFormat(undefined, { month: "short", year: "2-digit" }).format(new Date(`${key}-01T12:00:00`));
+  return new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" }).format(new Date(`${key}T12:00:00`));
 };
 
 const quartile = (values: number[], ratio: number) => {
@@ -667,7 +667,7 @@ export function LedgerApp() {
               <div className="mini-bars" aria-label="Spending over the last seven days">
                 {weekData.map((item) => {
                   const isClippedOutlier = weekFilterOutliers && item.value > weekScaleMaximum;
-                  return <button type="button" className="mini-bar" key={item.date} disabled={!item.count} onClick={() => openTransactionsForDate(item.date)} aria-label={item.count ? `${longDate(item.date)}: ${money(item.value, currency)} spent across ${item.count} ${item.count === 1 ? "transaction" : "transactions"}. Open in Transactions.` : `${longDate(item.date)}: no expense transactions.`}>{item.value > 0 && <i style={{ height: `${Math.max(12, Math.min(item.value, weekScaleMaximum) / weekScaleMaximum * 100)}%` }} className={`${item.date === selectedDate ? "current" : ""} ${isClippedOutlier ? "clipped-outlier" : ""}`}><b aria-hidden="true">{isClippedOutlier ? "···" : ""}</b></i>}<span>{new Intl.DateTimeFormat("en-AU", { weekday: "narrow" }).format(new Date(`${item.date}T12:00:00`))}</span></button>;
+                  return <button type="button" className="mini-bar" key={item.date} disabled={!item.count} onClick={() => openTransactionsForDate(item.date)} aria-label={item.count ? `${longDate(item.date)}: ${money(item.value, currency)} spent across ${item.count} ${item.count === 1 ? "transaction" : "transactions"}. Open in Transactions.` : `${longDate(item.date)}: no expense transactions.`}>{item.value > 0 && <i style={{ height: `${Math.max(12, Math.min(item.value, weekScaleMaximum) / weekScaleMaximum * 100)}%` }} className={`${item.date === selectedDate ? "current" : ""} ${isClippedOutlier ? "clipped-outlier" : ""}`}><b aria-hidden="true">{isClippedOutlier ? "···" : ""}</b></i>}<span>{new Intl.DateTimeFormat(undefined, { weekday: "narrow" }).format(new Date(`${item.date}T12:00:00`))}</span></button>;
                 })}
               </div>
             </section>
@@ -1040,7 +1040,25 @@ function TransactionsPanel({ groups, focusDate, currency, categoryEmoji, onEdit,
   onImport: (file: File) => Promise<void>;
   onAdd: () => void;
 }) {
-  const transactionCount = groups.reduce((sum, [, items]) => sum + items.length, 0);
+  const [query, setQuery] = useState("");
+    // The input stays on the urgent render; the filtered list is allowed to lag a
+    // frame behind so typing never stutters on a large ledger.
+    const deferredQuery = useDeferredValue(query);
+    const searching = deferredQuery.trim().length > 0;
+  
+    const visibleGroups = useMemo(() => {
+      const terms = deferredQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
+      if (!terms.length) return groups;
+      return groups
+        .map(([date, items]) => [date, items.filter((item) => {
+          const haystack = `${item.note} ${item.category} ${item.account} ${item.type} ${date} ${longDate(date)} ${(item.amountCents / 100).toFixed(2)}`.toLowerCase();
+          return terms.every((term) => haystack.includes(term));
+        })] as [string, Transaction[]])
+        .filter(([, items]) => items.length > 0);
+    }, [groups, deferredQuery]);
+  
+    const transactionCount = visibleGroups.reduce((sum, [, items]) => sum + items.length, 0);
+    const totalCount = groups.reduce((sum, [, items]) => sum + items.length, 0);
   const csvInput = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState("");
@@ -1048,7 +1066,7 @@ function TransactionsPanel({ groups, focusDate, currency, categoryEmoji, onEdit,
     if (!focusDate) return;
     const frame = window.requestAnimationFrame(() => document.getElementById(`ledger-day-${focusDate}`)?.scrollIntoView({ behavior: "smooth", block: "center" }));
     return () => window.cancelAnimationFrame(frame);
-  }, [focusDate, groups]);
+  }, [focusDate, visibleGroups]);
   const importFile = async (file: File | undefined) => {
     if (!file) return;
     setImporting(true); setImportError("");
@@ -1059,13 +1077,17 @@ function TransactionsPanel({ groups, focusDate, currency, categoryEmoji, onEdit,
   return <div className="transactions-page">
     <section className="report-table-card entry-ledger-card">
       <div className="ledger-toolbar">
-        <div><p>Detailed ledger</p><h2>All entries</h2><span>{transactionCount} transactions · Category, note, account and amount</span></div>
+        <div><p>Detailed ledger</p><h2>All entries</h2><span>{searching ? `${transactionCount} of ${totalCount} matching` : `${totalCount} transactions · Category, note, account and amount`}</span></div>
         <div className="csv-actions"><input ref={csvInput} type="file" accept=".csv,text/csv" onChange={(event) => void importFile(event.target.files?.[0])} /><button className="csv-button" onClick={() => csvInput.current?.click()} disabled={importing}>{importing ? "Importing…" : "⇧ Import CSV"}</button><button className="csv-button" onClick={onExport} disabled={!transactionCount}>⇩ Export CSV</button></div>
       </div>
-      {importError && <p className="csv-error" role="alert">{importError}</p>}
-      {groups.length ? <div className="ledger-table-scroll"><div className="entry-ledger">
+      <div className="ledger-search">
+              <input type="search" className="ledger-search-input" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search notes, categories, accounts, amounts…" aria-label="Search transactions" />
+              {searching && <button type="button" className="ledger-search-clear" onClick={() => setQuery("")}>Clear</button>}
+            </div>
+            {importError && <p className="csv-error" role="alert">{importError}</p>}
+      {visibleGroups.length ? <div className="ledger-table-scroll"><div className="entry-ledger">
         <div className="ledger-column-head"><span>Category</span><span>Note</span><span>Account</span><span>Amount</span><span aria-hidden="true" /></div>
-        {groups.map(([date, items]) => {
+        {visibleGroups.map(([date, items]) => {
           const dayNet = items.reduce((sum, item) => sum + (item.type === "income" ? item.amountCents : -item.amountCents), 0);
           return <section className={`ledger-day ${focusDate === date ? "focused" : ""}`} id={`ledger-day-${date}`} key={date}>
             <div className="ledger-day-head"><strong>{longDate(date)}</strong><span>{items.length} {items.length === 1 ? "entry" : "entries"}</span><b>{money(dayNet, items[0]?.currency ?? currency, true)}</b></div>
@@ -1078,7 +1100,7 @@ function TransactionsPanel({ groups, focusDate, currency, categoryEmoji, onEdit,
             </button>)}
           </section>;
         })}
-      </div></div> : <div className="ledger-empty"><span>🌿</span><h3>No entries yet</h3><p>Add a transaction and it will appear here.</p><button onClick={onAdd}>Add transaction</button></div>}
+      </div></div> : searching ? <div className="ledger-empty"><span>🔍</span><h3>No matches</h3><p>Nothing matches “{deferredQuery.trim()}”. Try a note, category, account or amount.</p><button onClick={() => setQuery("")}>Clear search</button></div> : <div className="ledger-empty"><span>🌿</span><h3>No entries yet</h3><p>Add a transaction and it will appear here.</p><button onClick={onAdd}>Add transaction</button></div>}
     </section>
   </div>;
 }
