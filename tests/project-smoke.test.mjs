@@ -202,3 +202,28 @@ test("mobile Settings carries the bin the sidebar shows on desktop", async () =>
   assert.match(styles, /\.sidebar \{ display: none; \}\.settings-deleted \{ display: block; \}/);
   assert.match(app, /className="personalize-shortcut"[\s\S]*?>Settings<\/button>/);
 });
+
+test("the currency is detected rather than hardcoded", async () => {
+  const [app, styles] = await Promise.all([
+    readFile(new URL("app/ledger-app.tsx", root), "utf8"),
+    readFile(new URL("app/globals.css", root), "utf8"),
+  ]);
+
+  // Nothing may pin the ledger to one country any more.
+  assert.doesNotMatch(app, /"AUD"/);
+  assert.doesNotMatch(app, /minimumFractionDigits: 2/);
+  assert.match(app, /bros-ledger:currency:v1/);
+  // Time zone first, UI language second: en-US in Sydney should still mean AUD.
+  assert.match(app, /const detectCurrency = \(\)/);
+  assert.match(app, /Intl\.DateTimeFormat\(\)\.resolvedOptions\(\)\.timeZone/);
+  assert.match(app, /zoneRegions \?\?= buildZoneRegions\(\)/);
+  assert.match(app, /new Intl\.Locale\(navigator\.language\)\.maximize\(\)\.region/);
+  // The picker and its labels come from Intl, not a bundled list.
+  assert.match(app, /supportedValuesOf\?\.\("currency"\)/);
+  assert.match(app, /new Intl\.DisplayNames\(undefined, \{ type: "currency" \}\)/);
+  assert.match(styles, /\.currency-select \{/);
+  // Detection must never reach the network.
+  assert.doesNotMatch(app, /ipapi|ipinfo|geoip|https?:\/\//);
+  // Entries keep the currency they were recorded in.
+  assert.match(app, /money\(item\.amountCents, item\.currency\)/);
+});
