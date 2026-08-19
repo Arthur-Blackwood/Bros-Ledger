@@ -179,6 +179,10 @@ test("deleting an entry parks it in the Bin instead of dropping it", async () =>
   assert.match(app, /icon=\{<BinIcon \/>\}/);
   assert.match(app, /icon: ReactNode/);
   assert.match(styles, /\.main-nav button span svg, \.mobile-nav button span svg/);
+  // Settings uses a drawn gear on both navs; no pencil glyph anywhere.
+  assert.match(app, /function GearIcon\(\)/);
+  assert.strictEqual(app.match(/icon=\{<GearIcon \/>\}/g).length, 2);
+  assert.doesNotMatch(app, /✎/);
 });
 
 test("mobile Settings carries the bin the sidebar shows on desktop", async () => {
