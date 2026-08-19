@@ -631,7 +631,7 @@ export function LedgerApp() {
           <NavItem active={view === "reports"} icon="↗" label="Reports" onClick={() => setView("reports")} />
           <NavItem active={view === "transactions"} icon="≡" label="Transactions" onClick={() => { setTransactionFocusDate(null); setView("transactions"); }} />
           <NavItem active={view === "deleted"} icon={<BinIcon />} label="Bin" onClick={() => setView("deleted")} />
-            <NavItem active={view === "personalization"} icon="✎" label="Settings" onClick={() => setView("personalization")} />
+            <NavItem active={view === "personalization"} icon={<GearIcon />} label="Settings" onClick={() => setView("personalization")} />
         </nav>
         <div className="sidebar-foot">
           <div className="sync-dot"><span /> Saved on this device</div>
@@ -718,7 +718,7 @@ export function LedgerApp() {
         <NavItem active={view === "reports"} icon="↗" label="Reports" onClick={() => setView("reports")} />
         <button className="mobile-add" onClick={() => setDrawerOpen(true)} aria-label="Add transaction">＋</button>
         <NavItem active={view === "transactions"} icon="≡" label="Transactions" onClick={() => { setTransactionFocusDate(null); setView("transactions"); }} />
-        <NavItem active={view === "personalization"} icon="✎" label="Settings" onClick={() => setView("personalization")} />
+        <NavItem active={view === "personalization"} icon={<GearIcon />} label="Settings" onClick={() => setView("personalization")} />
       </nav>
 
       {drawerOpen && <TransactionDrawer today={today} categories={categories} incomeHidden={incomeHidden} onClose={() => setDrawerOpen(false)} onSave={addTransaction} onSaved={() => { setDrawerOpen(false); setNotice("Transaction saved on this device."); }} />}
@@ -1554,6 +1554,16 @@ function BinIcon() {
       <path d="M6.5 6.5l.8 12.2a1.8 1.8 0 0 0 1.8 1.7h5.8a1.8 1.8 0 0 0 1.8-1.7l.8-12.2" />
       <path d="M10.4 10.4v6.4" />
       <path d="M13.6 10.4v6.4" />
+    </svg>
+  );
+}
+
+function GearIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="5.4" />
+      <circle cx="12" cy="12" r="2.1" />
+      <path d="M17.4 12h2M15.82 15.82l1.41 1.41M12 17.4v2M8.18 15.82l-1.41 1.41M6.6 12h-2M8.18 8.18L6.77 6.77M12 6.6v-2M15.82 8.18l1.41-1.41" />
     </svg>
   );
 }
