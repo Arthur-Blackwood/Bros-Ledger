@@ -1081,7 +1081,10 @@ function TransactionsPanel({ groups, focusDate, currency, categoryEmoji, onEdit,
         <div className="csv-actions"><input ref={csvInput} type="file" accept=".csv,text/csv" onChange={(event) => void importFile(event.target.files?.[0])} /><button className="csv-button" onClick={() => csvInput.current?.click()} disabled={importing}>{importing ? "Importing…" : "⇧ Import CSV"}</button><button className="csv-button" onClick={onExport} disabled={!transactionCount}>⇩ Export CSV</button></div>
       </div>
       <div className="ledger-search">
-              <input type="search" className="ledger-search-input" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search notes, categories, accounts, amounts…" aria-label="Search transactions" />
+              <div className="ledger-search-field">
+          <SearchIcon />
+          <input type="search" className="ledger-search-input" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search notes, categories, accounts…" aria-label="Search transactions" />
+        </div>
               {searching && <button type="button" className="ledger-search-clear" onClick={() => setQuery("")}>Clear</button>}
             </div>
             {importError && <p className="csv-error" role="alert">{importError}</p>}
@@ -1564,6 +1567,15 @@ function GearIcon() {
       <circle cx="12" cy="12" r="5.4" />
       <circle cx="12" cy="12" r="2.1" />
       <path d="M17.4 12h2M15.82 15.82l1.41 1.41M12 17.4v2M8.18 15.82l-1.41 1.41M6.6 12h-2M8.18 8.18L6.77 6.77M12 6.6v-2M15.82 8.18l1.41-1.41" />
+    </svg>
+  );
+}
+
+function SearchIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="10.5" cy="10.5" r="6.5" />
+      <path d="M15.4 15.4L20 20" />
     </svg>
   );
 }
