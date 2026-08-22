@@ -199,13 +199,23 @@ button:disabled { cursor: not-allowed; }
 .csv-actions { display: flex; align-items: center; gap: 8px; }
 
 /* Transactions search */
-.ledger-search { position: relative; display: flex; align-items: center; gap: 8px; margin: 14px 0 4px; }
-.ledger-search-input { flex: 1; min-width: 0; padding: 11px 14px; border: 1px solid var(--app-line); border-radius: 12px; background: var(--surface-alt); color: var(--app-text); font-size: 13px; }
+/* The card sets padding:0 and each band supplies its own, so this row has to
+   repeat the toolbar inset or it sits flush against the card edge. */
+.ledger-search { display: flex; align-items: center; gap: 10px; padding: 15px 28px 16px; border-bottom: 1px solid var(--line); }
+.ledger-search-field { position: relative; display: flex; align-items: center; flex: 1; min-width: 0; max-width: 420px; }
+.ledger-search-field svg { position: absolute; left: 13px; width: 15px; height: 15px; color: var(--app-muted); pointer-events: none; }
+.ledger-search-input { width: 100%; min-width: 0; padding: 10px 14px 10px 36px; border: 1px solid var(--app-line); border-radius: 11px; background: var(--surface-alt); color: var(--app-text); font-size: 13px; transition: border-color .15s ease, background .15s ease; }
 .ledger-search-input::placeholder { color: var(--app-muted); }
-.ledger-search-input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.ledger-search-input:hover { background: var(--surface-hover); }
+.ledger-search-input:focus { outline: 0; border-color: var(--accent); background: var(--surface); }
+.ledger-search-input:focus-visible { outline: 0; }
 .ledger-search-input::-webkit-search-cancel-button { display: none; }
-.ledger-search-clear { flex: none; padding: 9px 13px; border: 1px solid var(--app-line); border-radius: 11px; background: var(--surface-alt); color: var(--app-text); font-size: 11px; font-weight: 700; cursor: pointer; }
-.ledger-search-clear:hover { background: var(--surface-hover); }
+.ledger-search-clear { flex: none; padding: 9px 13px; border: 1px solid var(--app-line); border-radius: 10px; background: var(--surface-alt); color: var(--app-muted); font-size: 11px; font-weight: 700; cursor: pointer; }
+.ledger-search-clear:hover { background: var(--surface-hover); color: var(--app-text); }
+@media (max-width: 680px) {
+  .ledger-search { padding: 13px 18px 14px; }
+  .ledger-search-field { max-width: none; }
+}
 .csv-actions input { display: none; }
 .csv-error { margin: 14px 28px 0; padding: 11px 13px; border-radius: 12px; color: #a54534; background: #f9e6df; font-size: 11px; font-weight: 700; }
 .auth-card form { display: grid; gap: 12px; }
