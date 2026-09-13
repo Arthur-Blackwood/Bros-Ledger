@@ -27,6 +27,18 @@ Built with Next.js 16 and React 19, bundled by Vite through [vinext](https://www
 - The full ledger grouped by date, with inline editing and deletion.
 - CSV import and export using the columns `Date, Category, Note, Account, Amount`. Positive amounts are treated as income, negative amounts as expenses. Categories that do not exist yet are created on import.
 
+### Repeating entries
+
+Any entry can repeat: **Daily, Weekly, Fortnightly, Monthly, Yearly**, or a custom "every N days/weeks/months/years". The control sits in both the add and edit drawers and defaults to Never.
+
+Occurrences that fell due while the app was closed are written in on the next load, tagged so they can be told apart from entries you typed. Three details worth knowing:
+
+- Each occurrence is measured from the **first** entry in the series, not the previous one, so a monthly rule set on the 31st goes 31 January → 28 February → **31 March** rather than sliding to the 28th permanently.
+- Deleting a generated entry **keeps it deleted**. A per-series high-water mark is stored in `bros-ledger:repeat-marks:v1`, so the generator never walks backwards.
+- Generation is capped at 400 entries per load, so a daily rule backdated by years cannot flood the ledger in one go.
+
+Editing an entry updates the rule for everything generated after it; clearing the rule stops the series.
+
 ### Bin
 
 Deleting an entry moves it to the Bin rather than discarding it. Each row shows how long it has left, and can be restored to the ledger or removed for good. Anything older than **30 days** is pruned automatically the next time the app loads.
@@ -109,6 +121,7 @@ Everything is stored under `bros-ledger:*` keys in the browser’s local storage
 | `bros-ledger:theme:v1` | Theme preference |
 | `bros-ledger:palette:v1` | Colour palette preference |
 | `bros-ledger:currency:v1` | Display currency |
+| `bros-ledger:repeat-marks:v1` | How far each repeating series has been generated |
 | `bros-ledger:week-outlier-filter:v1` | Seven-day chart outlier setting |
 | `bros-ledger:report-chart-preferences:v1` | Saved report chart settings |
 
