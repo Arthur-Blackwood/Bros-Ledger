@@ -257,3 +257,35 @@ test("dates follow the reader locale and transactions are searchable", async () 
   assert.match(app, /<h3>No matches<\/h3>/);
   assert.match(styles, /\.ledger-search-input \{/);
 });
+
+test("repeating transactions generate without drifting or resurrecting", async () => {
+  const [app, styles] = await Promise.all([
+    readFile(new URL("app/ledger-app.tsx", root), "utf8"),
+    readFile(new URL("app/globals.css", root), "utf8"),
+  ]);
+
+  assert.match(app, /bros-ledger:repeat-marks:v1/);
+  assert.match(app, /type RepeatRule = \{ every: number; unit: RepeatUnit \}/);
+  // Optional on Transaction so ledgers written before this feature still parse.
+  assert.match(app, /repeat\?: RepeatRule \| null;/);
+  assert.match(app, /seriesId\?: string;/);
+
+  // Occurrences are measured from the series anchor. Stepping from the previous
+  // one makes a rule set on the 31st slip to the 28th and never recover.
+  assert.match(app, /const occurrenceAfter = \(anchorKey: string, repeat: RepeatRule, n: number\)/);
+  assert.match(app, /target\.setDate\(Math\.min\(day, lastDay\)\)/);
+  // The high-water mark is what stops a deleted occurrence coming back.
+  assert.match(app, /const cursor = mark && mark > latest\.occurredAt \? mark : latest\.occurredAt;/);
+  // A backdated daily rule must not flood the ledger on first open.
+  assert.match(app, /const maxGeneratedPerLoad = 400;/);
+  assert.match(app, /guard < maxGeneratedPerLoad/);
+  // Generated rows join the series and are tagged so they can be told apart.
+  assert.match(app, /source: "repeat"/);
+
+  // The control is offered on both add and edit, defaulting to no repeat.
+  assert.match(app, /function RepeatField/);
+  assert.strictEqual(app.match(/<RepeatField /g).length, 2);
+  assert.match(app, /\{ id: "never", label: "Never", rule: null \}/);
+  assert.match(app, /\{ id: "fortnightly", label: "Fortnightly", rule: \{ every: 2, unit: "week" \} \}/);
+  assert.match(styles, /\.repeat-options button\.active \{/);
+});
