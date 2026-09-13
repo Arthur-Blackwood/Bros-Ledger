@@ -13,9 +13,14 @@ type Transaction = {
   note: string;
   tags: string[];
   source: string;
+  repeat?: RepeatRule | null;
+  seriesId?: string;
 };
-type TransactionDraft = { date: string; type: Transaction["type"]; amount: number; category: string; account: string; note: string };
-type TransactionChanges = { category: string; note: string; account: string; amount: number };
+
+type RepeatUnit = "day" | "week" | "month" | "year";
+type RepeatRule = { every: number; unit: RepeatUnit };
+type TransactionDraft = { date: string; type: Transaction["type"]; amount: number; category: string; account: string; note: string; repeat: RepeatRule | null };
+type TransactionChanges = { category: string; note: string; account: string; amount: number; repeat: RepeatRule | null };
 type DeletedTransaction = Transaction & { deletedAt: string };
 
 type CategoryType = "expense" | "income";
@@ -35,6 +40,7 @@ const localCategoriesKey = "bros-ledger:categories:v1";
 const privacyPinHashKey = "bros-ledger:privacy-pin-hash:v1";
 const privacyPinSaltKey = "bros-ledger:privacy-pin-salt:v1";
 const deletedTransactionsKey = "bros-ledger:deleted-transactions:v1";
+const repeatMarksKey = "bros-ledger:repeat-marks:v1";
 const deletedRetentionDays = 30;
 const currencyPreferenceKey = "bros-ledger:currency:v1";
 const fallbackCurrency = "USD";
@@ -107,6 +113,17 @@ const starterCategoryTemplates: Array<[string, string, CategoryType]> = [
 const saveLocalTransactions = (transactions: Transaction[]) => window.localStorage.setItem(localTransactionsKey, JSON.stringify(transactions));
 const saveLocalCategories = (categories: LedgerCategory[]) => window.localStorage.setItem(localCategoriesKey, JSON.stringify(categories));
 const saveDeletedTransactions = (items: DeletedTransaction[]) => window.localStorage.setItem(deletedTransactionsKey, JSON.stringify(items));
+
+// How far each series has already been generated. Without this, deleting a
+// generated entry would leave the series looking behind and the next load would
+// put it straight back.
+const saveRepeatMarks = (marks: Record<string, string>) => window.localStorage.setItem(repeatMarksKey, JSON.stringify(marks));
+const readRepeatMarks = (): Record<string, string> => {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(repeatMarksKey) ?? "{}");
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, string> : {};
+  } catch { return {}; }
+};
 
 // Reading also prunes: anything past the retention window is dropped on load so the
 // bin cannot grow without bound, and "recently" stays honest.
@@ -302,6 +319,88 @@ const toDateKey = (date = new Date()) => {
   return local.toISOString().slice(0, 10);
 };
 
+const repeatUnits: RepeatUnit[] = ["day", "week", "month", "year"];
+const maxGeneratedPerLoad = 400;
+
+const repeatPresets: Array<{ id: string; label: string; rule: RepeatRule | null }> = [
+  { id: "never", label: "Never", rule: null },
+  { id: "daily", label: "Daily", rule: { every: 1, unit: "day" } },
+  { id: "weekly", label: "Weekly", rule: { every: 1, unit: "week" } },
+  { id: "fortnightly", label: "Fortnightly", rule: { every: 2, unit: "week" } },
+  { id: "monthly", label: "Monthly", rule: { every: 1, unit: "month" } },
+  { id: "yearly", label: "Yearly", rule: { every: 1, unit: "year" } },
+];
+
+const normaliseRepeat = (repeat: RepeatRule | null | undefined): RepeatRule | null => {
+  if (!repeat) return null;
+  const every = Math.floor(Number(repeat.every));
+  if (!Number.isFinite(every) || every < 1 || every > 365) return null;
+  if (!repeatUnits.includes(repeat.unit)) return null;
+  return { every, unit: repeat.unit };
+};
+
+const matchRepeatPreset = (repeat: RepeatRule | null) => {
+  if (!repeat) return "never";
+  const preset = repeatPresets.find((item) => item.rule && item.rule.every === repeat.every && item.rule.unit === repeat.unit);
+  return preset ? preset.id : "custom";
+};
+
+const describeRepeat = (repeat: RepeatRule) => repeat.every === 1 ? `every ${repeat.unit}` : `every ${repeat.every} ${repeat.unit}s`;
+
+// The nth occurrence is measured from the series anchor rather than stepped from
+// the previous one: stepping makes a rule set on the 31st slip to the 28th in
+// February and stay there forever.
+const occurrenceAfter = (anchorKey: string, repeat: RepeatRule, n: number) => {
+  const [year, month, day] = anchorKey.split("-").map(Number);
+  if (repeat.unit === "day" || repeat.unit === "week") {
+    const step = repeat.unit === "week" ? 7 : 1;
+    const base = new Date(year, month - 1, day, 12);
+    base.setDate(base.getDate() + repeat.every * step * n);
+    return toDateKey(base);
+  }
+  const monthsPer = repeat.unit === "year" ? 12 : 1;
+  const target = new Date(year, month - 1 + repeat.every * monthsPer * n, 1, 12);
+  const lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+  target.setDate(Math.min(day, lastDay));
+  return toDateKey(target);
+};
+
+// Fills in occurrences that fell due while the app was closed.
+const materialiseRepeats = (transactions: Transaction[], today: string, marks: Record<string, string>) => {
+  const series = new Map<string, Transaction[]>();
+  for (const item of transactions) {
+    const key = item.seriesId ?? item.id;
+    const bucket = series.get(key) ?? [];
+    bucket.push(item);
+    series.set(key, bucket);
+  }
+  const created: Transaction[] = [];
+  const nextMarks = { ...marks };
+  for (const [seriesId, items] of series) {
+    const sorted = [...items].sort((left, right) => left.occurredAt.localeCompare(right.occurredAt));
+    const anchor = sorted[0];
+    const latest = sorted[sorted.length - 1];
+    const repeat = normaliseRepeat(latest.repeat);
+    if (!repeat) continue;
+    const mark = marks[seriesId];
+    const cursor = mark && mark > latest.occurredAt ? mark : latest.occurredAt;
+    let index = 0;
+    while (occurrenceAfter(anchor.occurredAt, repeat, index) < cursor && index < 100000) index += 1;
+    let guard = 0;
+    let last = cursor;
+    let next = occurrenceAfter(anchor.occurredAt, repeat, index + 1);
+    while (next <= today && guard < maxGeneratedPerLoad) {
+      created.push({ ...latest, id: crypto.randomUUID(), seriesId, occurredAt: next, source: "repeat" });
+      last = next;
+      guard += 1;
+      index += 1;
+      next = occurrenceAfter(anchor.occurredAt, repeat, index + 1);
+    }
+    if (last !== cursor || mark === undefined) nextMarks[seriesId] = last;
+  }
+  return { created, marks: nextMarks };
+};
+
 const dateShift = (dateKey: string, amount: number) => {
   const date = new Date(`${dateKey}T12:00:00`);
   date.setDate(date.getDate() + amount);
@@ -401,7 +500,16 @@ export function LedgerApp() {
   };
 
   useEffect(() => {
-    setTransactions(readLocalTransactions());
+    const stored = readLocalTransactions();
+    const marks = readRepeatMarks();
+    const due = materialiseRepeats(stored, toDateKey(), marks);
+    const withRepeats = due.created.length ? [...due.created, ...stored] : stored;
+    if (due.created.length) {
+      saveLocalTransactions(withRepeats);
+      setNotice(`${due.created.length} repeating ${due.created.length === 1 ? "entry" : "entries"} added.`);
+    }
+    saveRepeatMarks(due.marks);
+    setTransactions(withRepeats);
     const pruned = readDeletedTransactions();
     setDeletedTransactions(pruned);
     saveDeletedTransactions(pruned);
@@ -515,8 +623,9 @@ export function LedgerApp() {
 
   const addTransaction = async (draft: TransactionDraft) => {
     if (!Number.isFinite(draft.amount) || draft.amount <= 0) throw new Error("Enter an amount greater than zero.");
+    const newId = crypto.randomUUID();
     const transaction: Transaction = {
-      id: crypto.randomUUID(), occurredAt: draft.date, type: draft.type, amountCents: Math.round(draft.amount * 100),
+      id: newId, seriesId: newId, repeat: normaliseRepeat(draft.repeat), occurredAt: draft.date, type: draft.type, amountCents: Math.round(draft.amount * 100),
       currency: currencyPreference, category: draft.category, account: draft.account.trim() || "Everyday", note: draft.note, tags: [], source: "manual",
     };
     const next = [transaction, ...transactions];
@@ -526,7 +635,7 @@ export function LedgerApp() {
 
   const updateTransaction = async (id: string, changes: TransactionChanges) => {
     if (!Number.isFinite(changes.amount) || changes.amount <= 0) throw new Error("Enter an amount greater than zero.");
-    const next = transactions.map((item) => item.id === id ? { ...item, category: changes.category.trim(), note: changes.note, account: changes.account.trim() || "Everyday", amountCents: Math.round(changes.amount * 100) } : item);
+    const next = transactions.map((item) => item.id === id ? { ...item, category: changes.category.trim(), note: changes.note, account: changes.account.trim() || "Everyday", amountCents: Math.round(changes.amount * 100), repeat: normaliseRepeat(changes.repeat) } : item);
     saveLocalTransactions(next);
     setTransactions(next);
   };
@@ -1388,6 +1497,7 @@ function TransactionDrawer({ today, categories, incomeHidden, onClose, onSave, o
   const [account, setAccount] = useState("Everyday");
   const [date, setDate] = useState(today);
   const [note, setNote] = useState("");
+  const [repeat, setRepeat] = useState<RepeatRule | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -1400,7 +1510,7 @@ function TransactionDrawer({ today, categories, incomeHidden, onClose, onSave, o
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setSaving(true); setError("");
     try {
-      await onSave({ date, type, amount: Number(amount), category, account, note });
+      await onSave({ date, type, amount: Number(amount), category, account, note, repeat });
       onSaved();
     } catch (saveError) { setError(saveError instanceof Error ? saveError.message : "Could not save the transaction."); }
     finally { setSaving(false); }
@@ -1415,6 +1525,7 @@ function TransactionDrawer({ today, categories, incomeHidden, onClose, onSave, o
       <label className="field-label">Note<AutoGrowingNoteInput placeholder={type === "expense" ? "e.g. Coles\n\nMilk - 3.50 AUD" : "e.g. Salary payment"} value={note} onChange={setNote} /></label>
       <fieldset className="category-picker"><legend>Choose a category</legend>{availableCategories.length ? <div>{availableCategories.map((item) => <button type="button" key={item.id} className={category === item.name ? "active" : ""} onClick={() => setCategory(item.name)}><span>{item.emoji}</span>{item.name}</button>)}</div> : <p className="category-picker-empty">No {type} categories yet. Move one into this section in Personalization.</p>}</fieldset>
       <div className="field-row"><label className="field-label">Account<select value={account} onChange={(event) => setAccount(event.target.value)}><option>Everyday</option><option>Credit</option><option>Savings</option><option>Cash</option></select></label><label className="field-label">Date<input type="date" value={date} max={today} onChange={(event) => setDate(event.target.value)} /></label></div>
+      <RepeatField value={repeat} onChange={setRepeat} />
       {error && <p className="form-error">{error}</p>}
       <button className="save-button" disabled={saving || !availableCategories.length}>{saving ? "Saving…" : "Save transaction"}</button>
     </form>
@@ -1438,6 +1549,7 @@ function EditTransactionDrawer({ transaction, categories, incomeHidden, onClose,
   const [note, setNote] = useState(transaction.note);
   const [account, setAccount] = useState(transaction.account);
   const [amount, setAmount] = useState((transaction.amountCents / 100).toFixed(2));
+  const [repeat, setRepeat] = useState<RepeatRule | null>(normaliseRepeat(transaction.repeat));
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
@@ -1446,7 +1558,7 @@ function EditTransactionDrawer({ transaction, categories, incomeHidden, onClose,
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setSaving(true); setError("");
     try {
-      await onSave(transaction.id, { category, note, account, amount: Number(amount) });
+      await onSave(transaction.id, { category, note, account, amount: Number(amount), repeat });
       onSaved();
     } catch (saveError) { setError(saveError instanceof Error ? saveError.message : "Could not update the entry."); }
     finally { setSaving(false); }
@@ -1474,6 +1586,7 @@ function EditTransactionDrawer({ transaction, categories, incomeHidden, onClose,
       <label className="field-label">Account<input list="ledger-accounts" value={account} onChange={(event) => setAccount(event.target.value)} maxLength={40} required /></label>
       <datalist id="ledger-accounts"><option value="Everyday" /><option value="Credit" /><option value="Savings" /><option value="Cash" /></datalist>
       <label className="field-label">Amount<div className="edit-amount"><span>A$</span><input inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} required /></div></label>
+      <RepeatField value={repeat} onChange={setRepeat} />
       <div className="entry-context"><span>{transaction.type === "income" ? "Income" : "Expense"}</span><span>{transaction.occurredAt}</span></div>
       {error && <p className="form-error">{error}</p>}
       <button className="save-button" disabled={saving || deleting}>{saving ? "Saving…" : "Save changes"}</button>
@@ -1577,5 +1690,37 @@ function SearchIcon() {
       <circle cx="10.5" cy="10.5" r="6.5" />
       <path d="M15.4 15.4L20 20" />
     </svg>
+  );
+}
+
+function RepeatField({ value, onChange }: { value: RepeatRule | null; onChange: (rule: RepeatRule | null) => void }) {
+  const selected = matchRepeatPreset(value);
+  const [custom, setCustom] = useState<RepeatRule>(value && selected === "custom" ? value : { every: 3, unit: "month" });
+
+  const pickCustom = (next: RepeatRule) => {
+    setCustom(next);
+    onChange(normaliseRepeat(next) ?? next);
+  };
+
+  return (
+    <div className="repeat-field">
+      <span className="repeat-label">Repeat</span>
+      <div className="repeat-options" role="group" aria-label="Repeat schedule">
+        {repeatPresets.map((preset) => (
+          <button type="button" key={preset.id} className={selected === preset.id ? "active" : ""} aria-pressed={selected === preset.id} onClick={() => onChange(preset.rule)}>{preset.label}</button>
+        ))}
+        <button type="button" className={selected === "custom" ? "active" : ""} aria-pressed={selected === "custom"} onClick={() => onChange(custom)}>Custom</button>
+      </div>
+      {selected === "custom" && (
+        <div className="repeat-custom">
+          <span>Every</span>
+          <input type="number" min={1} max={365} value={custom.every} aria-label="Repeat interval" onChange={(event) => pickCustom({ ...custom, every: Number(event.target.value) })} />
+          <select value={custom.unit} aria-label="Repeat unit" onChange={(event) => pickCustom({ ...custom, unit: event.target.value as RepeatUnit })}>
+            {repeatUnits.map((unit) => <option key={unit} value={unit}>{custom.every === 1 ? unit : `${unit}s`}</option>)}
+          </select>
+        </div>
+      )}
+      <p className="repeat-hint">{value ? `A copy is added ${describeRepeat(value)}, starting the next time it falls due.` : "This entry is recorded once."}</p>
+    </div>
   );
 }
