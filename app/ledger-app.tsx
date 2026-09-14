@@ -20,7 +20,7 @@ type Transaction = {
 type RepeatUnit = "day" | "week" | "month" | "year";
 type RepeatRule = { every: number; unit: RepeatUnit };
 type TransactionDraft = { date: string; type: Transaction["type"]; amount: number; category: string; account: string; note: string; repeat: RepeatRule | null };
-type TransactionChanges = { category: string; note: string; account: string; amount: number; repeat: RepeatRule | null };
+type TransactionChanges = { date: string; category: string; note: string; account: string; amount: number; repeat: RepeatRule | null };
 type DeletedTransaction = Transaction & { deletedAt: string };
 
 type CategoryType = "expense" | "income";
@@ -635,7 +635,8 @@ export function LedgerApp() {
 
   const updateTransaction = async (id: string, changes: TransactionChanges) => {
     if (!Number.isFinite(changes.amount) || changes.amount <= 0) throw new Error("Enter an amount greater than zero.");
-    const next = transactions.map((item) => item.id === id ? { ...item, category: changes.category.trim(), note: changes.note, account: changes.account.trim() || "Everyday", amountCents: Math.round(changes.amount * 100), repeat: normaliseRepeat(changes.repeat) } : item);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(changes.date)) throw new Error("Enter a valid date.");
+    const next = transactions.map((item) => item.id === id ? { ...item, category: changes.category.trim(), note: changes.note, account: changes.account.trim() || "Everyday", amountCents: Math.round(changes.amount * 100), occurredAt: changes.date, repeat: normaliseRepeat(changes.repeat) } : item);
     saveLocalTransactions(next);
     setTransactions(next);
   };
@@ -831,7 +832,7 @@ export function LedgerApp() {
       </nav>
 
       {drawerOpen && <TransactionDrawer today={today} categories={categories} incomeHidden={incomeHidden} onClose={() => setDrawerOpen(false)} onSave={addTransaction} onSaved={() => { setDrawerOpen(false); setNotice("Transaction saved on this device."); }} />}
-      {editingTransaction && <EditTransactionDrawer transaction={editingTransaction} categories={categories} incomeHidden={incomeHidden} onClose={() => setEditingTransaction(null)} onSave={updateTransaction} onDelete={removeTransaction} onSaved={() => { setEditingTransaction(null); setNotice("Entry updated on this device."); }} onDeleted={() => { setEditingTransaction(null); setNotice("Entry deleted."); }} />}
+      {editingTransaction && <EditTransactionDrawer transaction={editingTransaction} today={today} categories={categories} incomeHidden={incomeHidden} onClose={() => setEditingTransaction(null)} onSave={updateTransaction} onDelete={removeTransaction} onSaved={() => { setEditingTransaction(null); setNotice("Entry updated on this device."); }} onDeleted={() => { setEditingTransaction(null); setNotice("Entry deleted."); }} />}
       {privacyUnlockOpen && <IncomePrivacyUnlock onClose={() => setPrivacyUnlockOpen(false)} onUnlocked={showIncome} />}
     </main>
   );
@@ -1544,11 +1545,12 @@ function AutoGrowingNoteInput({ value, onChange, placeholder }: { value: string;
   return <textarea ref={noteField} className="auto-grow-note" rows={1} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} required />;
 }
 
-function EditTransactionDrawer({ transaction, categories, incomeHidden, onClose, onSave, onDelete, onSaved, onDeleted }: { transaction: Transaction; categories: LedgerCategory[]; incomeHidden: boolean; onClose: () => void; onSave: (id: string, changes: TransactionChanges) => Promise<void>; onDelete: (id: string) => Promise<void>; onSaved: () => void; onDeleted: () => void }) {
+function EditTransactionDrawer({ transaction, today, categories, incomeHidden, onClose, onSave, onDelete, onSaved, onDeleted }: { transaction: Transaction; today: string; categories: LedgerCategory[]; incomeHidden: boolean; onClose: () => void; onSave: (id: string, changes: TransactionChanges) => Promise<void>; onDelete: (id: string) => Promise<void>; onSaved: () => void; onDeleted: () => void }) {
   const [category, setCategory] = useState(transaction.category);
   const [note, setNote] = useState(transaction.note);
   const [account, setAccount] = useState(transaction.account);
   const [amount, setAmount] = useState((transaction.amountCents / 100).toFixed(2));
+  const [date, setDate] = useState(transaction.occurredAt);
   const [repeat, setRepeat] = useState<RepeatRule | null>(normaliseRepeat(transaction.repeat));
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -1558,7 +1560,7 @@ function EditTransactionDrawer({ transaction, categories, incomeHidden, onClose,
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setSaving(true); setError("");
     try {
-      await onSave(transaction.id, { category, note, account, amount: Number(amount), repeat });
+      await onSave(transaction.id, { date, category, note, account, amount: Number(amount), repeat });
       onSaved();
     } catch (saveError) { setError(saveError instanceof Error ? saveError.message : "Could not update the entry."); }
     finally { setSaving(false); }
@@ -1577,7 +1579,7 @@ function EditTransactionDrawer({ transaction, categories, incomeHidden, onClose,
   return <div className="drawer-layer" role="dialog" aria-modal="true" aria-label="Edit entry">
     <button className="drawer-backdrop" onClick={onClose} aria-label="Close" />
     <form className="transaction-drawer edit-drawer" onSubmit={submit}>
-      <div className="drawer-header"><div><p>{longDate(transaction.occurredAt)}</p><h2>Edit entry</h2></div><button type="button" onClick={onClose}>×</button></div>
+      <div className="drawer-header"><div><p>{longDate(date)}</p><h2>Edit entry</h2></div><button type="button" onClick={onClose}>×</button></div>
       <p className="edit-intro">Update the category, note, account and amount used throughout your ledger and CSV exports.</p>
       <label className="field-label">Category<input list="ledger-categories" value={category} onChange={(event) => setCategory(event.target.value)} maxLength={30} required /></label>
       <datalist id="ledger-categories">{visibleCategories.map((item) => <option value={item.name} key={item.id} />)}</datalist>
@@ -1585,9 +1587,10 @@ function EditTransactionDrawer({ transaction, categories, incomeHidden, onClose,
       <label className="field-label">Note<AutoGrowingNoteInput value={note} onChange={setNote} /></label>
       <label className="field-label">Account<input list="ledger-accounts" value={account} onChange={(event) => setAccount(event.target.value)} maxLength={40} required /></label>
       <datalist id="ledger-accounts"><option value="Everyday" /><option value="Credit" /><option value="Savings" /><option value="Cash" /></datalist>
+      <label className="field-label">Date<input type="date" value={date} max={today} onChange={(event) => setDate(event.target.value)} required /></label>
       <label className="field-label">Amount<div className="edit-amount"><span>A$</span><input inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} required /></div></label>
       <RepeatField value={repeat} onChange={setRepeat} />
-      <div className="entry-context"><span>{transaction.type === "income" ? "Income" : "Expense"}</span><span>{transaction.occurredAt}</span></div>
+      <div className="entry-context"><span>{transaction.type === "income" ? "Income" : "Expense"}</span></div>
       {error && <p className="form-error">{error}</p>}
       <button className="save-button" disabled={saving || deleting}>{saving ? "Saving…" : "Save changes"}</button>
       <button type="button" className="delete-entry-button" onClick={remove} disabled={saving || deleting}>{deleting ? "Deleting…" : "Delete entry"}</button>
