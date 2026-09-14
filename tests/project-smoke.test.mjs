@@ -289,3 +289,18 @@ test("repeating transactions generate without drifting or resurrecting", async (
   assert.match(app, /\{ id: "fortnightly", label: "Fortnightly", rule: \{ every: 2, unit: "week" \} \}/);
   assert.match(styles, /\.repeat-options button\.active \{/);
 });
+
+test("the recorded date is editable", async () => {
+  const app = await readFile(new URL("app/ledger-app.tsx", root), "utf8");
+
+  assert.match(app, /type TransactionChanges = \{ date: string;/);
+  assert.match(app, /const \[date, setDate\] = useState\(transaction\.occurredAt\);/);
+  assert.match(app, /onSave\(transaction\.id, \{ date, category/);
+  assert.match(app, /occurredAt: changes\.date/);
+  // Same validation and same future cap as the add drawer.
+  assert.match(app, /Enter a valid date\./);
+  assert.match(app, /<label className="field-label">Date<input type="date" value=\{date\} max=\{today\}/);
+  assert.match(app, /today: string;/);
+  // The drawer title tracks the edited value instead of the stored one.
+  assert.match(app, /<p>\{longDate\(date\)\}<\/p>/);
+});
