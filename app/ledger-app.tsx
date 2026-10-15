@@ -42,6 +42,9 @@ const privacyPinSaltKey = "bros-ledger:privacy-pin-salt:v1";
 const deletedTransactionsKey = "bros-ledger:deleted-transactions:v1";
 const repeatMarksKey = "bros-ledger:repeat-marks:v1";
 const deletedRetentionDays = 30;
+const noticeTimeoutMs = 5000;
+
+type AppNotice = { id: number; text: string; undo?: () => void };
 const currencyPreferenceKey = "bros-ledger:currency:v1";
 const fallbackCurrency = "USD";
 
@@ -467,7 +470,40 @@ export function LedgerApp() {
   const [loading, setLoading] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useState<AppNotice | null>(null);
+  const noticeSeq = useRef(0);
+
+  // Every call makes a new object, so repeating a message restarts the timer.
+  const showNotice = (text: string, undo?: () => void) => {
+    noticeSeq.current += 1;
+    setNotice({ id: noticeSeq.current, text, undo });
+  };
+  const dismissNotice = () => setNotice(null);
+
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(null), noticeTimeoutMs);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
+
+  // Snapshots the whole ledger so an undo is a plain restore, not a replayed edit.
+  const ledgerSnapshot = () => {
+    const previousTransactions = transactions;
+    const previousDeleted = deletedTransactions;
+    return () => {
+      saveLocalTransactions(previousTransactions);
+      setTransactions(previousTransactions);
+      saveDeletedTransactions(previousDeleted);
+      setDeletedTransactions(previousDeleted);
+    };
+  };
+  const categorySnapshot = () => {
+    const previousCategories = categories;
+    return () => {
+      saveLocalCategories(previousCategories);
+      setCategories(previousCategories);
+    };
+  };
   const [incomeHidden, setIncomeHidden] = useState(true);
   const [privacyUnlockOpen, setPrivacyUnlockOpen] = useState(false);
   const [themePreference, setThemePreference] = useState<ThemePreference>(readThemePreference);
@@ -514,7 +550,7 @@ export function LedgerApp() {
     const withRepeats = due.created.length ? [...due.created, ...stored] : stored;
     if (due.created.length) {
       saveLocalTransactions(withRepeats);
-      setNotice(`${due.created.length} repeating ${due.created.length === 1 ? "entry" : "entries"} added.`);
+      showNotice(`${due.created.length} repeating ${due.created.length === 1 ? "entry" : "entries"} added.`);
     }
     saveRepeatMarks(due.marks);
     setTransactions(withRepeats);
@@ -591,8 +627,8 @@ export function LedgerApp() {
 
   const copyText = async (text: string, message: string) => {
     await navigator.clipboard.writeText(text);
-    setNotice(message);
-    window.setTimeout(() => setNotice(""), 2600);
+    showNotice(message);
+    window.setTimeout(() => dismissNotice(), 2600);
   };
 
   const exportCsv = () => {
@@ -616,7 +652,7 @@ export function LedgerApp() {
     URL.revokeObjectURL(url);
     const exported = visibleTransactions.length;
     const withheld = transactions.length - exported;
-    setNotice(withheld
+    showNotice(withheld
       ? `${exported} expense${exported === 1 ? "" : "s"} exported. ${withheld} income ${withheld === 1 ? "entry is" : "entries are"} withheld while income is hidden \u2014 unlock income to include ${withheld === 1 ? "it" : "them"}.`
       : `${exported} transaction${exported === 1 ? "" : "s"} exported.`);
   };
@@ -634,7 +670,7 @@ export function LedgerApp() {
     });
     saveLocalCategories(nextCategories);
     setCategories(nextCategories);
-    setNotice(`${imported.length} transaction${imported.length === 1 ? "" : "s"} imported from CSV.`);
+    showNotice(`${imported.length} transaction${imported.length === 1 ? "" : "s"} imported from CSV.`);
   };
 
   const addTransaction = async (draft: TransactionDraft) => {
@@ -662,16 +698,17 @@ export function LedgerApp() {
     setPrivacyUnlockOpen(false);
     setDrawerOpen(false);
     if (editingTransaction?.type === "income") setEditingTransaction(null);
-    setNotice("Income is hidden.");
+    showNotice("Income is hidden.");
   };
 
   const showIncome = () => {
     setIncomeHidden(false);
     setPrivacyUnlockOpen(false);
-    setNotice("Income is visible for this visit.");
+    showNotice("Income is visible for this visit.");
   };
 
   const removeTransaction = async (id: string) => {
+    const undoDelete = ledgerSnapshot();
     const target = transactions.find((item) => item.id === id);
     const next = transactions.filter((item) => item.id !== id);
     saveLocalTransactions(next);
@@ -681,10 +718,11 @@ export function LedgerApp() {
       saveDeletedTransactions(nextDeleted);
       setDeletedTransactions(nextDeleted);
     }
-    setNotice(`Moved to the Bin. Kept for ${deletedRetentionDays} days.`);
+    showNotice(`Moved to the Bin. Kept for ${deletedRetentionDays} days.`, undoDelete);
   };
 
   const restoreTransaction = async (id: string) => {
+    const undoRestore = ledgerSnapshot();
     const target = deletedTransactions.find((item) => item.id === id);
     if (!target) return;
     const restored: Transaction = {
@@ -698,23 +736,25 @@ export function LedgerApp() {
     setDeletedTransactions(nextDeleted);
     saveLocalTransactions(next);
     setTransactions(next);
-    setNotice("Entry restored to your ledger.");
+    showNotice("Entry restored to your ledger.", undoRestore);
   };
 
   const purgeTransaction = async (id: string) => {
+    const undoPurge = ledgerSnapshot();
     const nextDeleted = deletedTransactions.filter((item) => item.id !== id);
     saveDeletedTransactions(nextDeleted);
     setDeletedTransactions(nextDeleted);
-    setNotice("Entry deleted permanently.");
+    showNotice("Entry deleted permanently.", undoPurge);
   };
 
   const purgeAllTransactions = async () => {
+    const undoPurgeAll = ledgerSnapshot();
     // Only clears what the current privacy mode can actually see.
     const removable = new Set(visibleDeleted.map((item) => item.id));
     const nextDeleted = deletedTransactions.filter((item) => !removable.has(item.id));
     saveDeletedTransactions(nextDeleted);
     setDeletedTransactions(nextDeleted);
-    setNotice(`${removable.size} ${removable.size === 1 ? "entry" : "entries"} deleted permanently.`);
+    showNotice(`${removable.size} ${removable.size === 1 ? "entry" : "entries"} deleted permanently.`, undoPurgeAll);
   };
 
   const saveCategoryOrder = async (ordered: LedgerCategory[]) => {
@@ -738,9 +778,11 @@ export function LedgerApp() {
   };
 
   const removeCategory = async (id: string) => {
+    const undoCategory = categorySnapshot();
     const next = categories.filter((item) => item.id !== id);
     saveLocalCategories(next);
     setCategories(next);
+    showNotice("Category removed.", undoCategory);
   };
 
   if (pinReady === null) return <AuthLoading />;
@@ -774,7 +816,15 @@ export function LedgerApp() {
           <div className="topbar-actions"><span className="access-badge owner">Local only</span><button type="button" className={`privacy-toggle ${incomeHidden ? "hidden" : "shown"}`} onClick={() => incomeHidden ? setPrivacyUnlockOpen(true) : hideIncome()} aria-pressed={!incomeHidden}><span aria-hidden="true">{incomeHidden ? "◉" : "◎"}</span>{incomeHidden ? "Income hidden" : "Income shown"}</button>{view === "reports" && <button className="personalize-shortcut" onClick={() => setView("personalization")}>Settings</button>}<button className="add-button" onClick={() => setDrawerOpen(true)}><span>＋</span> Add transaction</button></div>
         </header>
 
-        {notice && <div className="notice" role="status">{notice}<button onClick={() => setNotice("")}>×</button></div>}
+        {notice && (
+          <div className="notice" role="status">
+            <span>{notice.text}</span>
+            {notice.undo && (
+              <button type="button" className="notice-undo" onClick={() => { notice.undo?.(); dismissNotice(); }}>Undo</button>
+            )}
+            <button type="button" className="notice-close" aria-label="Dismiss" onClick={dismissNotice}>×</button>
+          </div>
+        )}
 
         {view === "overview" && (
           <div className="dashboard-grid">
@@ -847,8 +897,8 @@ export function LedgerApp() {
         <NavItem active={view === "personalization"} icon={<GearIcon />} label="Settings" onClick={() => setView("personalization")} />
       </nav>
 
-      {drawerOpen && <TransactionDrawer today={today} categories={categories} incomeHidden={incomeHidden} onClose={() => setDrawerOpen(false)} onSave={addTransaction} onSaved={() => { setDrawerOpen(false); setNotice("Transaction saved on this device."); }} />}
-      {editingTransaction && <EditTransactionDrawer transaction={editingTransaction} today={today} categories={categories} incomeHidden={incomeHidden} onClose={() => setEditingTransaction(null)} onSave={updateTransaction} onDelete={removeTransaction} onSaved={() => { setEditingTransaction(null); setNotice("Entry updated on this device."); }} onDeleted={() => { setEditingTransaction(null); setNotice("Entry deleted."); }} />}
+      {drawerOpen && <TransactionDrawer today={today} categories={categories} incomeHidden={incomeHidden} onClose={() => setDrawerOpen(false)} onSave={addTransaction} onSaved={() => { setDrawerOpen(false); showNotice("Transaction saved on this device."); }} />}
+      {editingTransaction && <EditTransactionDrawer transaction={editingTransaction} today={today} categories={categories} incomeHidden={incomeHidden} onClose={() => setEditingTransaction(null)} onSave={updateTransaction} onDelete={removeTransaction} onSaved={() => { setEditingTransaction(null); showNotice("Entry updated on this device."); }} onDeleted={() => { setEditingTransaction(null); showNotice("Entry deleted."); }} />}
       {privacyUnlockOpen && <IncomePrivacyUnlock onClose={() => setPrivacyUnlockOpen(false)} onUnlocked={showIncome} />}
     </main>
   );
