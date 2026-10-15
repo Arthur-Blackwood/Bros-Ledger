@@ -17,7 +17,7 @@ Built with Next.js 16 and React 19, bundled by Vite through [vinext](https://www
 ### Reports
 
 - **Spending by category** as a donut chart over a month, quarter or year, with an option to roll categories below 3% into *Other*.
-- **Activity heat map** laid out as real calendar months, Monday-first, showing one month by default and switchable to 3 months, 6 months or the whole year. Each month stays visually separate and carries its own total, and the legend reports the average spending and income per month across the period. Only days that actually moved money are marked, and clicking a day still opens it.
+- **Activity heat map** laid out as real calendar months, Monday-first, showing one month by default and switchable to 3 months, 6 months or the whole year. Each month stays visually separate and carries its own total, and the legend reports the average spending and income per month across the period. Each month reports its average spending and income per day, and multi-month views add a figure for the period as a whole. A month still running is averaged over the days so far, not the days it will have. Only days that actually moved money are marked, and clicking a day still opens it.
 - **Explorer chart** that groups income or spending by day, month or year and reports the total, highest, lowest and average.
 - Interquartile-range outlier filtering, available on each chart independently.
 - Chart settings are remembered between visits.
@@ -42,6 +42,8 @@ Editing an entry updates the rule for everything generated after it; clearing th
 ### Bin
 
 Deleting an entry moves it to the Bin rather than discarding it. Each row shows how long it has left, and can be restored to the ledger or removed for good. Anything older than **30 days** is pruned automatically the next time the app loads.
+
+Restoring and permanently deleting are both undoable: the confirmation that appears offers an **Undo** for five seconds, after which it clears itself. Removing a category can be undone the same way.
 
 On desktop the Bin is its own sidebar section. On mobile — where the sidebar is hidden — it appears at the bottom of **Settings** instead, so there is no extra tab.
 
