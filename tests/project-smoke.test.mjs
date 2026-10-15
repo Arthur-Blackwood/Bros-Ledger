@@ -240,7 +240,8 @@ test("dates follow the reader locale and transactions are searchable", async () 
 
   // No formatter may be pinned to one locale any more.
   assert.doesNotMatch(app, /"en-AU"/);
-  assert.strictEqual(app.match(/new Intl\.DateTimeFormat\(undefined/g).length, 4);
+  assert.ok(app.match(/new Intl\.DateTimeFormat\(undefined/g).length >= 4);
+  assert.equal(app.match(/new Intl\.DateTimeFormat\("/g), null);
 
   // Search keeps typing on the urgent render and defers the filtering.
   assert.match(app, /const deferredQuery = useDeferredValue\(query\)/);
