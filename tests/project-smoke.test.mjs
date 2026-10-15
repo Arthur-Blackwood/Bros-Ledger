@@ -342,7 +342,8 @@ test("the activity heat map is laid out as monthly calendars", async () => {
   assert.match(app, /className="activity-month"/);
   // Averages across the span, plus a per-month total.
   assert.match(app, /const activityAverages = useMemo/);
-  assert.match(app, /Average expenditure per month/);
+  assert.match(app, /activityAverages\.expensePerDay/);
+  assert.match(app, /activityAverages\.expense,/);
   assert.match(styles, /\.activity-months \{/);
 
   // Single-day inspection must be untouched by the relayout.
