@@ -31,7 +31,7 @@ type ExplorerGroup = "day" | "month" | "year";
 type ExplorerPeriod = "week" | "month" | "quarter" | "year" | "all";
 type CategoryPeriod = "month" | "quarter" | "year";
 type ActivityView = "both" | "expense" | "income";
-type ActivityWeeks = 8 | 16 | 26;
+type ActivitySpan = 1 | 3 | 6 | 12;
 type ThemePreference = "system" | "light" | "dark";
 type PalettePreference = "mono" | "forest" | "ocean" | "indigo" | "plum" | "terracotta";
 
@@ -253,7 +253,7 @@ type ReportChartPreferences = {
   categoryFilterOutliers: boolean;
   groupSmallCategories: boolean;
   activityView: ActivityView;
-  activityWeeks: ActivityWeeks;
+  activitySpan: ActivitySpan;
   activityFilterOutliers: boolean;
 };
 
@@ -268,7 +268,7 @@ const defaultReportChartPreferences: ReportChartPreferences = {
   categoryFilterOutliers: false,
   groupSmallCategories: true,
   activityView: "both",
-  activityWeeks: 16,
+  activitySpan: 1,
   activityFilterOutliers: false,
 };
 
@@ -287,7 +287,7 @@ const readReportChartPreferences = (): ReportChartPreferences => {
       categoryFilterOutliers: Boolean(value.categoryFilterOutliers),
       groupSmallCategories: typeof value.groupSmallCategories === "boolean" ? value.groupSmallCategories : true,
       activityView: value.activityView === "expense" || value.activityView === "income" ? value.activityView : "both",
-      activityWeeks: value.activityWeeks === 8 || value.activityWeeks === 26 ? value.activityWeeks : 16,
+      activitySpan: value.activitySpan === 3 || value.activitySpan === 6 || value.activitySpan === 12 ? value.activitySpan : 1,
       activityFilterOutliers: Boolean(value.activityFilterOutliers),
     };
   } catch {
@@ -871,7 +871,7 @@ function ReportsPanel({ transactions, selectedDate, currency, categoryEmoji, inc
   const [categoryFilterOutliers, setCategoryFilterOutliers] = useState(false);
   const [groupSmallCategories, setGroupSmallCategories] = useState(true);
   const [activityView, setActivityView] = useState<ActivityView>("both");
-  const [activityWeeks, setActivityWeeks] = useState<ActivityWeeks>(16);
+  const [activitySpan, setActivitySpan] = useState<ActivitySpan>(1);
   const [activityFilterOutliers, setActivityFilterOutliers] = useState(false);
   const [shareStatus, setShareStatus] = useState("");
   const [selectedActivityDate, setSelectedActivityDate] = useState<string | null>(null);
@@ -891,7 +891,7 @@ function ReportsPanel({ transactions, selectedDate, currency, categoryEmoji, inc
     setCategoryFilterOutliers(saved.categoryFilterOutliers);
     setGroupSmallCategories(saved.groupSmallCategories);
     setActivityView(saved.activityView);
-    setActivityWeeks(saved.activityWeeks);
+    setActivitySpan(saved.activitySpan);
     setActivityFilterOutliers(saved.activityFilterOutliers);
     setChartPreferencesReady(true);
   }, []);
@@ -908,13 +908,13 @@ function ReportsPanel({ transactions, selectedDate, currency, categoryEmoji, inc
         categoryFilterOutliers,
         groupSmallCategories,
         activityView,
-        activityWeeks,
+        activitySpan,
         activityFilterOutliers,
       } satisfies ReportChartPreferences));
     } catch {
       // Preferences remain usable for the current visit when browser storage is unavailable.
     }
-  }, [chartPreferencesReady, explorerType, explorerGroup, explorerPeriod, filterOutliers, categoryPeriod, categoryFilterOutliers, groupSmallCategories, activityView, activityWeeks, activityFilterOutliers]);
+  }, [chartPreferencesReady, explorerType, explorerGroup, explorerPeriod, filterOutliers, categoryPeriod, categoryFilterOutliers, groupSmallCategories, activityView, activitySpan, activityFilterOutliers]);
 
   const categoryPeriodMeta = useMemo(() => {
     const end = selectedDate;
@@ -968,19 +968,48 @@ function ReportsPanel({ transactions, selectedDate, currency, categoryEmoji, inc
   const categoryTotal = categoryTotals.reduce((sum, [, value]) => sum + value, 0);
   const excludedCategoryTransactions = categorySourceTransactions.length - categoryTransactions.length;
 
-  const activity = useMemo(() => {
+  // One calendar block per month in the span, so months stay visually separate
+  // and a short February cannot be mistaken for a quiet one.
+  const activityMonths = useMemo(() => {
     const daily = new Map<string, { expense: number; income: number }>();
     transactions.forEach((item) => {
       const totals = daily.get(item.occurredAt) ?? { expense: 0, income: 0 };
       totals[item.type] += item.amountCents;
       daily.set(item.occurredAt, totals);
     });
-    const days = activityWeeks * 7;
-    return Array.from({ length: days }, (_, index) => {
-      const date = dateShift(selectedDate, index - days + 1);
-      return { date, ...(daily.get(date) ?? { expense: 0, income: 0 }) };
+    const endMonth = selectedDate.slice(0, 7);
+    return Array.from({ length: activitySpan }, (_, offset) => {
+      const key = shiftMonthKey(endMonth, offset - activitySpan + 1);
+      const [year, month] = key.split("-").map(Number);
+      const dayCount = new Date(year, month, 0).getDate();
+      // Monday-first, so the working week reads as a block.
+      const lead = (new Date(year, month - 1, 1, 12).getDay() + 6) % 7;
+      const days = Array.from({ length: dayCount }, (_, index) => {
+        const date = `${key}-${String(index + 1).padStart(2, "0")}`;
+        return { date, ...(daily.get(date) ?? { expense: 0, income: 0 }) };
+      });
+      return {
+        key,
+        lead,
+        days,
+        expense: days.reduce((sum, day) => sum + day.expense, 0),
+        income: days.reduce((sum, day) => sum + day.income, 0),
+      };
     });
-  }, [transactions, selectedDate, activityWeeks]);
+  }, [transactions, selectedDate, activitySpan]);
+
+  const activity = useMemo(() => activityMonths.flatMap((month) => month.days), [activityMonths]);
+  const activityAverages = useMemo(() => ({
+    expense: Math.round(activityMonths.reduce((sum, month) => sum + month.expense, 0) / Math.max(1, activityMonths.length)),
+    income: Math.round(activityMonths.reduce((sum, month) => sum + month.income, 0) / Math.max(1, activityMonths.length)),
+  }), [activityMonths]);
+
+  const weekdayInitials = useMemo(() => {
+    const formatter = new Intl.DateTimeFormat(undefined, { weekday: "narrow" });
+    // 2026-01-05 is a Monday, so this walks Monday through Sunday.
+    return Array.from({ length: 7 }, (_, index) => formatter.format(new Date(2026, 0, 5 + index, 12)));
+  }, []);
+
   const expenseActivityMax = activityScaleMaximum(activity.map((item) => item.expense), activityFilterOutliers);
   const incomeActivityMax = activityScaleMaximum(activity.map((item) => item.income), activityFilterOutliers);
 
@@ -1060,34 +1089,47 @@ function ReportsPanel({ transactions, selectedDate, currency, categoryEmoji, inc
     </section>
 
     <section className="activity-card analysis-card">
-      <div className="analysis-heading"><div><p>Last {activityWeeks} weeks</p><h2>{effectiveActivityView === "both" ? "Cash flow activity" : effectiveActivityView === "expense" ? "Expenditure activity" : "Income activity"}</h2></div><button className="help-button" onClick={() => setOpenInfo((current) => current === "activity" ? null : "activity")} aria-label="About cash flow activity" aria-expanded={openInfo === "activity"} aria-controls="activity-info">?</button></div>
+      <div className="analysis-heading"><div><p>{activitySpan === 1 ? monthLabel(selectedDate.slice(0, 7)) : activitySpan === 12 ? "Last 12 months" : `Last ${activitySpan} months`}</p><h2>{effectiveActivityView === "both" ? "Cash flow activity" : effectiveActivityView === "expense" ? "Expenditure activity" : "Income activity"}</h2></div><button className="help-button" onClick={() => setOpenInfo((current) => current === "activity" ? null : "activity")} aria-label="About cash flow activity" aria-expanded={openInfo === "activity"} aria-controls="activity-info">?</button></div>
       {openInfo === "activity" && <InfoCallout id="activity-info">Each square is one calendar day. Expenditure fills the day cell, while income appears as a smaller animated rainbow capsule in the centre, so both flows stay readable at a glance. Empty days stay neutral. Outlier filtering caps the colour scale so unusual days do not flatten the rest of the chart. Exact transactions remain unchanged and available when you click a date.</InfoCallout>}
       <div className="activity-controls">
         <div><span>Display</span><div className="segmented-control group-control">{(["both", "expense", "income"] as ActivityView[]).map((view) => <button type="button" key={view} disabled={incomeHidden && view !== "expense"} className={effectiveActivityView === view ? "active" : ""} onClick={() => { setActivityView(view); setSelectedActivityDate(null); }}>{view === "both" ? "Both" : view === "expense" ? "Expense" : "Income"}</button>)}</div></div>
-        <div><span>Period</span><div className="segmented-control group-control">{([8, 16, 26] as ActivityWeeks[]).map((weeks) => <button type="button" key={weeks} className={activityWeeks === weeks ? "active" : ""} onClick={() => { setActivityWeeks(weeks); setSelectedActivityDate(null); }}>{weeks} weeks</button>)}</div></div>
+        <div><span>Period</span><div className="segmented-control group-control">{([1, 3, 6, 12] as ActivitySpan[]).map((span) => <button type="button" key={span} className={activitySpan === span ? "active" : ""} onClick={() => { setActivitySpan(span); setSelectedActivityDate(null); }}>{span === 1 ? "Month" : span === 12 ? "Year" : `${span} months`}</button>)}</div></div>
         <div><span>Filter outliers</span><button type="button" className={`outlier-toggle ${activityFilterOutliers ? "active" : ""}`} onClick={() => setActivityFilterOutliers((value) => !value)} aria-pressed={activityFilterOutliers}>{activityFilterOutliers ? "Filtering" : "Include all"}</button></div>
       </div>
-      <div className="activity-grid" style={{ gridTemplateColumns: `repeat(${activityWeeks}, minmax(7px, 1fr))` }} aria-label={`Daily ${effectiveActivityView === "both" ? "income and expenditure" : effectiveActivityView} over the last ${activityWeeks} weeks`}>
-        {activity.map((item) => {
-          const expenseLevel = activityLevel(item.expense, expenseActivityMax);
-          const incomeLevel = activityLevel(item.income, incomeActivityMax);
-          const hasExpense = item.expense > 0;
-          const hasIncome = item.income > 0;
-          const hasBoth = effectiveActivityView === "both" && hasExpense && hasIncome;
-          // A cell may only claim a type when that type actually moved money that day.
-          // Falling through to effectiveActivityView marked every single day as activity.
-          const singleType = effectiveActivityView === "both" ? hasExpense ? "expense" : hasIncome ? "income" : "" : effectiveActivityView === "expense" ? hasExpense ? "expense" : "" : hasIncome ? "income" : "";
-          const singleLevel = singleType === "expense" ? expenseLevel : singleType === "income" ? incomeLevel : 0;
-          const cellClass = hasBoth ? `expense level-${expenseLevel} has-income` : singleType === "expense" ? `expense level-${singleLevel}` : singleType === "income" ? "income-only" : "";
-          const description = effectiveActivityView === "expense"
-            ? `${longDate(item.date)}: expenditure ${money(item.expense, currency)}`
-            : effectiveActivityView === "income"
-              ? `${longDate(item.date)}: income ${money(item.income, currency)}`
-              : `${longDate(item.date)}: expenditure ${money(item.expense, currency)}, income ${money(item.income, currency)}, net ${money(item.income - item.expense, currency, true)}`;
-          return <button key={item.date} type="button" className={`activity-cell ${cellClass} ${selectedActivityDate === item.date ? "selected" : ""}`} title={description} aria-label={`Show activity for ${description}`} aria-pressed={selectedActivityDate === item.date} onClick={() => setSelectedActivityDate((current) => current === item.date ? null : item.date)}>{(hasBoth || singleType === "income") && <i className={`activity-income-pill level-${incomeLevel}`} aria-hidden="true" />}</button>;
-        })}
-      </div>
+        <div className="activity-months">
+          {activityMonths.map((month) => (
+            <section className="activity-month" key={month.key}>
+              <header className="activity-month-head">
+                <strong>{new Intl.DateTimeFormat(undefined, { month: "short", year: activitySpan > 6 ? "2-digit" : undefined }).format(new Date(`${month.key}-01T12:00:00`))}</strong>
+                <span>{money(effectiveActivityView === "income" ? month.income : month.expense, currency)}</span>
+              </header>
+              <div className="activity-weekdays" aria-hidden="true">{weekdayInitials.map((initial, index) => <span key={index}>{initial}</span>)}</div>
+              <div className="activity-days" role="grid" aria-label={`${monthLabel(month.key)} daily ${effectiveActivityView === "both" ? "income and expenditure" : effectiveActivityView}`}>
+                {Array.from({ length: month.lead }, (_, index) => <span className="activity-blank" key={`lead-${index}`} aria-hidden="true" />)}
+                {month.days.map((item) => {
+                const expenseLevel = activityLevel(item.expense, expenseActivityMax);
+                const incomeLevel = activityLevel(item.income, incomeActivityMax);
+                const hasExpense = item.expense > 0;
+                const hasIncome = item.income > 0;
+                const hasBoth = effectiveActivityView === "both" && hasExpense && hasIncome;
+                // A cell may only claim a type when that type actually moved money that day.
+                // Falling through to effectiveActivityView marked every single day as activity.
+                const singleType = effectiveActivityView === "both" ? hasExpense ? "expense" : hasIncome ? "income" : "" : effectiveActivityView === "expense" ? hasExpense ? "expense" : "" : hasIncome ? "income" : "";
+                const singleLevel = singleType === "expense" ? expenseLevel : singleType === "income" ? incomeLevel : 0;
+                const cellClass = hasBoth ? `expense level-${expenseLevel} has-income` : singleType === "expense" ? `expense level-${singleLevel}` : singleType === "income" ? "income-only" : "";
+                const description = effectiveActivityView === "expense"
+                  ? `${longDate(item.date)}: expenditure ${money(item.expense, currency)}`
+                  : effectiveActivityView === "income"
+                    ? `${longDate(item.date)}: income ${money(item.income, currency)}`
+                    : `${longDate(item.date)}: expenditure ${money(item.expense, currency)}, income ${money(item.income, currency)}, net ${money(item.income - item.expense, currency, true)}`;
+                  return <button key={item.date} type="button" className={`activity-cell ${cellClass} ${selectedActivityDate === item.date ? "selected" : ""}`} title={description} aria-label={`Show activity for ${description}`} aria-pressed={selectedActivityDate === item.date} onClick={() => setSelectedActivityDate((current) => current === item.date ? null : item.date)}>{(hasBoth || singleType === "income") && <i className={`activity-income-pill level-${incomeLevel}`} aria-hidden="true" />}</button>;
+                })}
+              </div>
+            </section>
+          ))}
+        </div>
       <div className="activity-legend">{effectiveActivityView !== "income" && <span><i className="expense level-3" />Expense · scale to {money(expenseActivityMax, currency)}</span>}{effectiveActivityView !== "expense" && <span><i className="income level-3" />Income · scale to {money(incomeActivityMax, currency)}</span>}<span><i className="level-0" />No activity</span><small>Darker colour means a larger daily total.</small></div>
+          <div className="activity-averages">{effectiveActivityView !== "income" && <span>Average expenditure per month <b>{money(activityAverages.expense, currency)}</b></span>}{effectiveActivityView !== "expense" && <span>Average income per month <b>{money(activityAverages.income, currency)}</b></span>}<span>{activitySpan === 1 ? "1 month shown" : `${activitySpan} months shown`}</span></div>
       {selectedActivityDate && <ReportDetailPanel title={longDate(selectedActivityDate)} subtitle={effectiveActivityView === "both" ? "Cash flow activity" : effectiveActivityView === "expense" ? "Expenditure activity" : "Income activity"} items={activityDetails} currency={currency} categoryEmoji={categoryEmoji} onEdit={onEditTransaction} onClose={() => setSelectedActivityDate(null)} />}
     </section>
 
