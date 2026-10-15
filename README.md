@@ -8,7 +8,7 @@ Built with Next.js 16 and React 19, bundled by Vite through [vinext](https://www
 
 ### Today
 
-- Net cash flow for the current month, split into income and spending.
+- Net cash flow for a month, split into income and spending. Swipe the card or use its arrows to step back through previous months.
 - A seven-day spending chart. Days with no spending render no bar at all, and any day with activity opens straight into its entries.
 - Optional outlier filtering that caps the chart scale so a single unusual day does not flatten the rest of the week.
 - A day-by-day transaction list. Click any row to edit it; hover to reveal delete.
@@ -17,7 +17,7 @@ Built with Next.js 16 and React 19, bundled by Vite through [vinext](https://www
 ### Reports
 
 - **Spending by category** as a donut chart over a month, quarter or year, with an option to roll categories below 3% into *Other*.
-- **Activity heat map** of the last 8, 16 or 26 weeks. Only days that actually moved money are marked.
+- **Activity heat map** laid out as real calendar months, Monday-first, showing one month by default and switchable to 3 months, 6 months or the whole year. Each month stays visually separate and carries its own total, and the legend reports the average spending and income per month across the period. Only days that actually moved money are marked, and clicking a day still opens it.
 - **Explorer chart** that groups income or spending by day, month or year and reports the total, highest, lowest and average.
 - Interquartile-range outlier filtering, available on each chart independently.
 - Chart settings are remembered between visits.
