@@ -304,3 +304,50 @@ test("the recorded date is editable", async () => {
   // The drawer title tracks the edited value instead of the stored one.
   assert.match(app, /<p>\{longDate\(date\)\}<\/p>/);
 });
+
+test("the cash flow card slides between months", async () => {
+  const [app, styles] = await Promise.all([
+    readFile(new URL("app/ledger-app.tsx", root), "utf8"),
+    readFile(new URL("app/globals.css", root), "utf8"),
+  ]);
+
+  assert.doesNotMatch(app, /Cash flow options/);
+  assert.match(app, /const slideCashflow = \(amount: number\)/);
+  // Sliding must never run past the current month.
+  assert.match(app, /return next > toDateKey\(\)\.slice\(0, 7\) \? current : next;/);
+  assert.match(app, /disabled=\{atCurrentMonth\}/);
+  // Pointer swipe as well as the arrows.
+  assert.match(app, /onPointerDown=\{\(event\) => \{ swipeFrom\.current = event\.clientX; \}\}/);
+  assert.match(app, /Math\.abs\(delta\) > 45/);
+  // The card has its own month, so sliding it does not move the selected day.
+  assert.match(app, /const cashflowItems = useMemo/);
+  assert.match(styles, /\.balance-nav \{/);
+});
+
+test("the activity heat map is laid out as monthly calendars", async () => {
+  const [app, styles] = await Promise.all([
+    readFile(new URL("app/ledger-app.tsx", root), "utf8"),
+    readFile(new URL("app/globals.css", root), "utf8"),
+  ]);
+
+  assert.doesNotMatch(app, /activityWeeks/);
+  assert.doesNotMatch(styles, /\.activity-grid/);
+  assert.match(app, /type ActivitySpan = 1 \| 3 \| 6 \| 12;/);
+  assert.match(app, /activitySpan: 1,/);
+  assert.match(app, /const activityMonths = useMemo/);
+  // Monday-first, and each month gets its own block with leading blanks.
+  assert.match(app, /\(new Date\(year, month - 1, 1, 12\)\.getDay\(\) \+ 6\) % 7/);
+  assert.match(app, /className="activity-blank"/);
+  assert.match(app, /className="activity-month"/);
+  // Averages across the span, plus a per-month total.
+  assert.match(app, /const activityAverages = useMemo/);
+  assert.match(app, /Average expenditure per month/);
+  assert.match(styles, /\.activity-months \{/);
+
+  // Single-day inspection must be untouched by the relayout.
+  assert.match(app, /onClick=\{\(\) => setSelectedActivityDate\(\(current\) => current === item\.date \? null : item\.date\)\}/);
+  assert.match(app, /aria-pressed=\{selectedActivityDate === item\.date\}/);
+  assert.match(app, /selectedActivityDate && <ReportDetailPanel/);
+  assert.match(app, /activity-income-pill level-\$\{incomeLevel\}/);
+  assert.match(app, /const hasExpense = item\.expense > 0;/);
+});
