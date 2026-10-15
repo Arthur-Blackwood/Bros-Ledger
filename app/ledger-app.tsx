@@ -401,6 +401,14 @@ const materialiseRepeats = (transactions: Transaction[], today: string, marks: R
   return { created, marks: nextMarks };
 };
 
+const shiftMonthKey = (monthKey: string, amount: number) => {
+  const [year, month] = monthKey.split("-").map(Number);
+  const moved = new Date(year, month - 1 + amount, 1, 12);
+  return `${moved.getFullYear()}-${String(moved.getMonth() + 1).padStart(2, "0")}`;
+};
+
+const monthLabel = (monthKey: string) => new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" }).format(new Date(`${monthKey}-01T12:00:00`));
+
 const dateShift = (dateKey: string, amount: number) => {
   const date = new Date(`${dateKey}T12:00:00`);
   date.setDate(date.getDate() + amount);
@@ -527,9 +535,17 @@ export function LedgerApp() {
   const selectedExpense = selectedItems.filter((item) => item.type === "expense").reduce((sum, item) => sum + item.amountCents, 0);
   const selectedIncome = selectedItems.filter((item) => item.type === "income").reduce((sum, item) => sum + item.amountCents, 0);
   const monthKey = selectedDate.slice(0, 7);
+  const [cashflowMonth, setCashflowMonth] = useState(() => toDateKey().slice(0, 7));
+  const cashflowItems = useMemo(() => visibleTransactions.filter((item) => item.occurredAt.startsWith(cashflowMonth)), [visibleTransactions, cashflowMonth]);
+  const cashflowExpense = cashflowItems.filter((item) => item.type === "expense").reduce((sum, item) => sum + item.amountCents, 0);
+  const cashflowIncome = cashflowItems.filter((item) => item.type === "income").reduce((sum, item) => sum + item.amountCents, 0);
+  const atCurrentMonth = cashflowMonth >= toDateKey().slice(0, 7);
+  const slideCashflow = (amount: number) => setCashflowMonth((current) => {
+    const next = shiftMonthKey(current, amount);
+    return next > toDateKey().slice(0, 7) ? current : next;
+  });
+  const swipeFrom = useRef<number | null>(null);
   const monthItems = visibleTransactions.filter((item) => item.occurredAt.startsWith(monthKey));
-  const monthExpense = monthItems.filter((item) => item.type === "expense").reduce((sum, item) => sum + item.amountCents, 0);
-  const monthIncome = monthItems.filter((item) => item.type === "income").reduce((sum, item) => sum + item.amountCents, 0);
 
   const categoryTotals = useMemo(() => {
     const totals: Record<string, number> = {};
@@ -762,12 +778,12 @@ export function LedgerApp() {
 
         {view === "overview" && (
           <div className="dashboard-grid">
-            <section className="balance-card">
-              <div className="balance-head"><span>Net cash flow</span><button aria-label="Cash flow options">•••</button></div>
-              <strong aria-label={incomeHidden ? "Income treated as zero" : undefined}>{money((incomeHidden ? 0 : monthIncome) - monthExpense, currency, true)}</strong>
+            <section className="balance-card" onPointerDown={(event) => { swipeFrom.current = event.clientX; }} onPointerUp={(event) => { const from = swipeFrom.current; swipeFrom.current = null; if (from === null) return; const delta = event.clientX - from; if (Math.abs(delta) > 45) slideCashflow(delta > 0 ? -1 : 1); }} onPointerCancel={() => { swipeFrom.current = null; }}>
+              <div className="balance-head"><span>Net cash flow</span><div className="balance-nav"><button type="button" onClick={() => slideCashflow(-1)} aria-label="Previous month">‹</button><strong>{monthLabel(cashflowMonth)}</strong><button type="button" onClick={() => slideCashflow(1)} disabled={atCurrentMonth} aria-label="Next month">›</button></div></div>
+              <strong aria-label={incomeHidden ? "Income treated as zero" : undefined}>{money((incomeHidden ? 0 : cashflowIncome) - cashflowExpense, currency, true)}</strong>
               <div className="balance-meta">
-                <div><span className="legend-dot income" />Income this month <b>{money(incomeHidden ? 0 : monthIncome, currency)}</b></div>
-                <div><span className="legend-dot expense" />Spent this month <b>{money(monthExpense, currency)}</b></div>
+                <div><span className="legend-dot income" />Income <b>{money(incomeHidden ? 0 : cashflowIncome, currency)}</b></div>
+                <div><span className="legend-dot expense" />Spent <b>{money(cashflowExpense, currency)}</b></div>
               </div>
               <div className="balance-art" aria-hidden="true"><i /><i /><i /></div>
             </section>
