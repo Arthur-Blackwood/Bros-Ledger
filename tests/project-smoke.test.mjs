@@ -352,3 +352,69 @@ test("the activity heat map is laid out as monthly calendars", async () => {
   assert.match(app, /activity-income-pill level-\$\{incomeLevel\}/);
   assert.match(app, /const hasExpense = item\.expense > 0;/);
 });
+
+test("notices expire on their own and can be undone", async () => {
+  const [app, styles] = await Promise.all([
+    readFile(new URL("app/ledger-app.tsx", root), "utf8"),
+    readFile(new URL("app/globals.css", root), "utf8"),
+  ]);
+
+  // The reader should never have to hunt for the close button.
+  assert.match(app, /const noticeTimeoutMs = 5000;/);
+  assert.match(app, /window\.setTimeout\(\(\) => setNotice\(null\), noticeTimeoutMs\)/);
+  assert.match(app, /return \(\) => window\.clearTimeout\(timer\);/);
+  // A fresh object per call, so repeating a message restarts the countdown.
+  assert.match(app, /noticeSeq\.current \+= 1;/);
+  assert.ok(app.includes("setNotice({ id: noticeSeq.current, text, undo })"));
+
+  // Undo replays nothing: it puts the previous arrays back.
+  assert.match(app, /const ledgerSnapshot = \(\) => \{/);
+  assert.match(app, /const categorySnapshot = \(\) => \{/);
+  assert.strictEqual(app.match(/= ledgerSnapshot\(\);/g).length, 4);
+  assert.strictEqual(app.match(/= categorySnapshot\(\);/g).length, 1);
+  assert.ok(app.includes(", undoDelete)"));
+  assert.ok(app.includes(", undoRestore)"));
+  assert.ok(app.includes(", undoPurge)"));
+  assert.ok(app.includes(", undoPurgeAll)"));
+  assert.ok(app.includes(", undoCategory)"));
+  assert.match(app, /className="notice-undo"/);
+  assert.match(styles, /\.notice-undo \{/);
+});
+
+test("the heat map uses wide cells and fills the row", async () => {
+  const [app, styles] = await Promise.all([
+    readFile(new URL("app/ledger-app.tsx", root), "utf8"),
+    readFile(new URL("app/globals.css", root), "utf8"),
+  ]);
+
+  // Wider than tall, so one month covers more of the card than a square grid did.
+  assert.match(styles, /\.activity-cell \{ position: relative; aspect-ratio: 8 \/ 5;/);
+  assert.match(styles, /\.activity-blank \{ aspect-ratio: 8 \/ 5; \}/);
+  assert.equal(styles.match(/aspect-ratio: 1;/g), null);
+  // auto-fill keeps empty tracks, which is exactly what stranded a lone month.
+  assert.equal(styles.match(/auto-fill/g), null);
+  assert.match(app, /className="activity-months" data-span=\{activitySpan\}/);
+  assert.match(styles, /\.activity-months\[data-span="1"\]/);
+  assert.match(styles, /\.activity-months\[data-span="3"\]/);
+  assert.match(styles, /\.activity-months\[data-span="12"\]/);
+});
+
+test("the heat map reports averages per day as well as per month", async () => {
+  const app = await readFile(new URL("app/ledger-app.tsx", root), "utf8");
+
+  // A month still running averages over the days so far, not the days it will have.
+  assert.match(app, /const elapsed = days\.filter\(\(day\) => day\.date <= todayKey\)\.length;/);
+  assert.match(app, /const countedDays = elapsed \|\| days\.length;/);
+  assert.match(app, /expensePerDay: Math\.round\(expense \/ countedDays\)/);
+  assert.match(app, /incomePerDay: Math\.round\(income \/ countedDays\)/);
+  // The period figure divides by days, not by months.
+  assert.match(app, /expensePerDay: Math\.round\(expense \/ days\)/);
+  assert.match(app, /incomePerDay: Math\.round\(income \/ days\)/);
+  assert.match(app, /className="activity-month-avg"/);
+  assert.match(app, /activityAverages\.expensePerDay/);
+  assert.match(app, /activityAverages\.incomePerDay/);
+
+  // Picking a single day must keep working exactly as before.
+  assert.match(app, /className=\{`activity-cell/);
+  assert.match(app, /setSelectedDate/);
+});
