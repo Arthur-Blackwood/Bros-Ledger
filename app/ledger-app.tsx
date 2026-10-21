@@ -160,7 +160,7 @@ const bytesToBase64 = (bytes: Uint8Array) => btoa(Array.from(bytes, (byte) => St
 const base64ToBytes = (value: string) => Uint8Array.from(atob(value), (character) => character.charCodeAt(0));
 const bytesToHex = (bytes: ArrayBuffer) => Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
 
-const derivePrivacyPinHash = async (pin: string, salt: Uint8Array) => {
+const derivePrivacyPinHash = async (pin: string, salt: Uint8Array<ArrayBuffer>) => {
   const material = await crypto.subtle.importKey("raw", new TextEncoder().encode(pin), "PBKDF2", false, ["deriveBits"]);
   const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations: 120_000 }, material, 256);
   return bytesToHex(bits);
@@ -1164,9 +1164,11 @@ function ReportsPanel({ transactions, selectedDate, currency, categoryEmoji, inc
 
   const shareExplorer = async () => {
     const text = `${effectiveExplorerType === "expense" ? "Expenditure" : "Income"} total for ${explorerPeriodMeta.label.toLowerCase()}: ${money(explorerTotal, currency)}. Highest ${money(explorerHighest, currency)}, lowest ${money(explorerLowest, currency)}, average ${money(explorerAverage, currency)}.`;
-    if (navigator.share) await navigator.share({ title: "Bro's Ledger report", text });
+    // The DOM types declare share as always present, but older browsers still lack it.
+    const canShare = typeof navigator.share === "function";
+    if (canShare) await navigator.share({ title: "Bro's Ledger report", text });
     else await navigator.clipboard.writeText(text);
-    setShareStatus(navigator.share ? "Shared" : "Copied");
+    setShareStatus(canShare ? "Shared" : "Copied");
     window.setTimeout(() => setShareStatus(""), 1800);
   };
 
@@ -1193,7 +1195,7 @@ function ReportsPanel({ transactions, selectedDate, currency, categoryEmoji, inc
       {openInfo === "activity" && <InfoCallout id="activity-info">Each square is one calendar day. Expenditure fills the day cell, while income appears as a smaller animated rainbow capsule in the centre, so both flows stay readable at a glance. Empty days stay neutral. Outlier filtering caps the colour scale so unusual days do not flatten the rest of the chart. Excluding a category removes its transactions from the squares, totals and averages alike. Exact transactions remain unchanged and available when you click a date.</InfoCallout>}
       <div className="activity-controls">
         <div><span>Display</span><div className="segmented-control group-control">{(["both", "expense", "income"] as ActivityView[]).map((view) => <button type="button" key={view} disabled={incomeHidden && view !== "expense"} className={effectiveActivityView === view ? "active" : ""} onClick={() => { setActivityView(view); setSelectedActivityDate(null); }}>{view === "both" ? "Both" : view === "expense" ? "Expense" : "Income"}</button>)}</div></div>
-        <div><span>Period</span><div className="segmented-control group-control">{([1, 3, 6, 12] as ActivitySpan[]).map((span) => <button type="button" key={span} className={activitySpan === span ? "active" : ""} onClick={() => { setActivitySpan(span); setSelectedActivityDate(null); }}>{span === 1 ? "Month" : span === 12 ? "Year" : `${span} months`}</button>)}</div></div>
+        <div><span>Period</span><div className="segmented-control span-control">{([1, 3, 6, 12] as ActivitySpan[]).map((span) => <button type="button" key={span} className={activitySpan === span ? "active" : ""} onClick={() => { setActivitySpan(span); setSelectedActivityDate(null); }}>{span === 1 ? "Month" : span === 12 ? "Year" : `${span} months`}</button>)}</div></div>
         <div><span>Filter outliers</span><button type="button" className={`outlier-toggle ${activityFilterOutliers ? "active" : ""}`} onClick={() => setActivityFilterOutliers((value) => !value)} aria-pressed={activityFilterOutliers}>{activityFilterOutliers ? "Filtering" : "Include all"}</button></div>
         <div><span>Exclude</span><button type="button" className={`outlier-toggle ${activityExcludedNames.length ? "active" : ""}`} onClick={() => setActivityExcludeOpen((value) => !value)} aria-expanded={activityExcludeOpen} aria-controls="activity-exclude">{activityExcludedNames.length ? `${activityExcludedNames.length} excluded` : "None"}</button></div>
       </div>
@@ -1817,6 +1819,8 @@ function BinPanel({ items, categoryEmoji, retentionDays, onRestore, onPurge, onP
   onPurgeAll: () => Promise<void>;
 }) {
   const [confirmingPurgeAll, setConfirmingPurgeAll] = useState(false);
+  // Read the clock once per visit to the Bin, so rendering stays pure.
+  const [now] = useState(() => Date.now());
   const ordered = useMemo(() => [...items].sort((left, right) => right.deletedAt.localeCompare(left.deletedAt)), [items]);
 
   return <div className="transactions-page">
@@ -1827,7 +1831,7 @@ function BinPanel({ items, categoryEmoji, retentionDays, onRestore, onPurge, onP
       </div>
       {ordered.length ? <div className="deleted-list">
         {ordered.map((item) => {
-          const elapsed = Math.floor((Date.now() - Date.parse(item.deletedAt)) / 86400000);
+          const elapsed = Math.floor((now - Date.parse(item.deletedAt)) / 86400000);
           const daysLeft = Math.max(0, retentionDays - elapsed);
           return <div className="deleted-row" key={item.id}>
             <div className="category-icon" style={{ background: `${categoryMeta[item.category]?.color ?? categoryMeta.Other.color}30` }}>{categoryEmoji(item.category)}</div>
