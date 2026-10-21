@@ -258,6 +258,7 @@ type ReportChartPreferences = {
   activityView: ActivityView;
   activitySpan: ActivitySpan;
   activityFilterOutliers: boolean;
+  activityExcludedCategories: string[];
 };
 
 const reportChartPreferencesKey = "bros-ledger:report-chart-preferences:v1";
@@ -273,6 +274,7 @@ const defaultReportChartPreferences: ReportChartPreferences = {
   activityView: "both",
   activitySpan: 1,
   activityFilterOutliers: false,
+  activityExcludedCategories: [],
 };
 
 const readReportChartPreferences = (): ReportChartPreferences => {
@@ -292,6 +294,7 @@ const readReportChartPreferences = (): ReportChartPreferences => {
       activityView: value.activityView === "expense" || value.activityView === "income" ? value.activityView : "both",
       activitySpan: value.activitySpan === 3 || value.activitySpan === 6 || value.activitySpan === 12 ? value.activitySpan : 1,
       activityFilterOutliers: Boolean(value.activityFilterOutliers),
+      activityExcludedCategories: Array.isArray(value.activityExcludedCategories) ? value.activityExcludedCategories.filter((key): key is string => typeof key === "string") : [],
     };
   } catch {
     return defaultReportChartPreferences;
@@ -456,6 +459,9 @@ const activityScaleMaximum = (values: number[], filterOutliers: boolean) => {
   const q3 = quartile(positive, .75);
   return Math.max(1, Math.min(maximum, q3 + 1.5 * (q3 - q1)));
 };
+
+// Keyed by type as well as name, since an expense and an income category may share a name.
+const activityCategoryKey = (item: Pick<Transaction, "type" | "category">) => `${item.type}:${item.category}`;
 
 const activityLevel = (value: number, maximum: number) => value === 0 ? 0 : value <= maximum * .25 ? 1 : value <= maximum * .5 ? 2 : value <= maximum * .75 ? 3 : 4;
 
@@ -923,6 +929,8 @@ function ReportsPanel({ transactions, selectedDate, currency, categoryEmoji, inc
   const [activityView, setActivityView] = useState<ActivityView>("both");
   const [activitySpan, setActivitySpan] = useState<ActivitySpan>(1);
   const [activityFilterOutliers, setActivityFilterOutliers] = useState(false);
+  const [activityExcludedCategories, setActivityExcludedCategories] = useState<string[]>([]);
+  const [activityExcludeOpen, setActivityExcludeOpen] = useState(false);
   const [shareStatus, setShareStatus] = useState("");
   const [selectedActivityDate, setSelectedActivityDate] = useState<string | null>(null);
   const [selectedExplorerKey, setSelectedExplorerKey] = useState<string | null>(null);
@@ -943,6 +951,7 @@ function ReportsPanel({ transactions, selectedDate, currency, categoryEmoji, inc
     setActivityView(saved.activityView);
     setActivitySpan(saved.activitySpan);
     setActivityFilterOutliers(saved.activityFilterOutliers);
+    setActivityExcludedCategories(saved.activityExcludedCategories);
     setChartPreferencesReady(true);
   }, []);
 
@@ -960,11 +969,12 @@ function ReportsPanel({ transactions, selectedDate, currency, categoryEmoji, inc
         activityView,
         activitySpan,
         activityFilterOutliers,
+        activityExcludedCategories,
       } satisfies ReportChartPreferences));
     } catch {
       // Preferences remain usable for the current visit when browser storage is unavailable.
     }
-  }, [chartPreferencesReady, explorerType, explorerGroup, explorerPeriod, filterOutliers, categoryPeriod, categoryFilterOutliers, groupSmallCategories, activityView, activitySpan, activityFilterOutliers]);
+  }, [chartPreferencesReady, explorerType, explorerGroup, explorerPeriod, filterOutliers, categoryPeriod, categoryFilterOutliers, groupSmallCategories, activityView, activitySpan, activityFilterOutliers, activityExcludedCategories]);
 
   const categoryPeriodMeta = useMemo(() => {
     const end = selectedDate;
@@ -1018,12 +1028,35 @@ function ReportsPanel({ transactions, selectedDate, currency, categoryEmoji, inc
   const categoryTotal = categoryTotals.reduce((sum, [, value]) => sum + value, 0);
   const excludedCategoryTransactions = categorySourceTransactions.length - categoryTransactions.length;
 
+  // Excluded categories leave every heat map figure, not just the colours.
+  const activityTransactions = useMemo(() => {
+    if (!activityExcludedCategories.length) return transactions;
+    const excluded = new Set(activityExcludedCategories);
+    return transactions.filter((item) => !excluded.has(activityCategoryKey(item)));
+  }, [transactions, activityExcludedCategories]);
+  const activityCategoryOptions = useMemo(() => {
+    const keys = new Set(transactions.map(activityCategoryKey));
+    // Keep a saved exclusion listed even with no entries left, so it can still be undone.
+    activityExcludedCategories.forEach((key) => keys.add(key));
+    return Array.from(keys)
+      .map((key) => { const split = key.indexOf(":"); return { key, type: key.slice(0, split) as CategoryType, name: key.slice(split + 1) }; })
+      .filter((option) => effectiveActivityView === "both" || option.type === effectiveActivityView)
+      .sort((left, right) => left.type === right.type ? left.name.localeCompare(right.name) : left.type === "expense" ? -1 : 1);
+  }, [transactions, activityExcludedCategories, effectiveActivityView]);
+  const toggleActivityCategory = (key: string) => {
+    setActivityExcludedCategories((current) => current.includes(key) ? current.filter((item) => item !== key) : [...current, key]);
+    setSelectedActivityDate(null);
+  };
+  const activityExcludedNames = activityExcludedCategories
+    .filter((key) => effectiveActivityView === "both" || key.startsWith(`${effectiveActivityView}:`))
+    .map((key) => key.slice(key.indexOf(":") + 1));
+
   // One calendar block per month in the span, so months stay visually separate
   // and a short February cannot be mistaken for a quiet one.
   const activityMonths = useMemo(() => {
     const todayKey = toDateKey();
     const daily = new Map<string, { expense: number; income: number }>();
-    transactions.forEach((item) => {
+    activityTransactions.forEach((item) => {
       const totals = daily.get(item.occurredAt) ?? { expense: 0, income: 0 };
       totals[item.type] += item.amountCents;
       daily.set(item.occurredAt, totals);
@@ -1055,7 +1088,7 @@ function ReportsPanel({ transactions, selectedDate, currency, categoryEmoji, inc
         incomePerDay: Math.round(income / countedDays),
       };
     });
-  }, [transactions, selectedDate, activitySpan]);
+  }, [activityTransactions, selectedDate, activitySpan]);
 
   const activity = useMemo(() => activityMonths.flatMap((month) => month.days), [activityMonths]);
   const activityAverages = useMemo(() => {
@@ -1126,7 +1159,7 @@ function ReportsPanel({ transactions, selectedDate, currency, categoryEmoji, inc
   const explorerAverage = explorerValues.length ? Math.round(explorerTotal / explorerValues.length) : 0;
   const chartMax = Math.max(explorerHighest, 1);
   const tickIndexes = Array.from(new Set([0, Math.floor((series.length - 1) / 3), Math.floor((series.length - 1) * 2 / 3), series.length - 1])).filter((index) => index >= 0);
-  const activityDetails = selectedActivityDate ? transactions.filter((item) => item.occurredAt === selectedActivityDate && (effectiveActivityView === "both" || item.type === effectiveActivityView)) : [];
+  const activityDetails = selectedActivityDate ? activityTransactions.filter((item) => item.occurredAt === selectedActivityDate && (effectiveActivityView === "both" || item.type === effectiveActivityView)) : [];
   const explorerDetails = selectedExplorerKey ? explorerSourceTransactions.filter((item) => explorerKey(item.occurredAt, explorerGroup) === selectedExplorerKey) : [];
 
   const shareExplorer = async () => {
@@ -1157,12 +1190,20 @@ function ReportsPanel({ transactions, selectedDate, currency, categoryEmoji, inc
 
     <section className="activity-card analysis-card">
       <div className="analysis-heading"><div><p>{activitySpan === 1 ? monthLabel(selectedDate.slice(0, 7)) : activitySpan === 12 ? "Last 12 months" : `Last ${activitySpan} months`}</p><h2>{effectiveActivityView === "both" ? "Cash flow activity" : effectiveActivityView === "expense" ? "Expenditure activity" : "Income activity"}</h2></div><button className="help-button" onClick={() => setOpenInfo((current) => current === "activity" ? null : "activity")} aria-label="About cash flow activity" aria-expanded={openInfo === "activity"} aria-controls="activity-info">?</button></div>
-      {openInfo === "activity" && <InfoCallout id="activity-info">Each square is one calendar day. Expenditure fills the day cell, while income appears as a smaller animated rainbow capsule in the centre, so both flows stay readable at a glance. Empty days stay neutral. Outlier filtering caps the colour scale so unusual days do not flatten the rest of the chart. Exact transactions remain unchanged and available when you click a date.</InfoCallout>}
+      {openInfo === "activity" && <InfoCallout id="activity-info">Each square is one calendar day. Expenditure fills the day cell, while income appears as a smaller animated rainbow capsule in the centre, so both flows stay readable at a glance. Empty days stay neutral. Outlier filtering caps the colour scale so unusual days do not flatten the rest of the chart. Excluding a category removes its transactions from the squares, totals and averages alike. Exact transactions remain unchanged and available when you click a date.</InfoCallout>}
       <div className="activity-controls">
         <div><span>Display</span><div className="segmented-control group-control">{(["both", "expense", "income"] as ActivityView[]).map((view) => <button type="button" key={view} disabled={incomeHidden && view !== "expense"} className={effectiveActivityView === view ? "active" : ""} onClick={() => { setActivityView(view); setSelectedActivityDate(null); }}>{view === "both" ? "Both" : view === "expense" ? "Expense" : "Income"}</button>)}</div></div>
         <div><span>Period</span><div className="segmented-control group-control">{([1, 3, 6, 12] as ActivitySpan[]).map((span) => <button type="button" key={span} className={activitySpan === span ? "active" : ""} onClick={() => { setActivitySpan(span); setSelectedActivityDate(null); }}>{span === 1 ? "Month" : span === 12 ? "Year" : `${span} months`}</button>)}</div></div>
         <div><span>Filter outliers</span><button type="button" className={`outlier-toggle ${activityFilterOutliers ? "active" : ""}`} onClick={() => setActivityFilterOutliers((value) => !value)} aria-pressed={activityFilterOutliers}>{activityFilterOutliers ? "Filtering" : "Include all"}</button></div>
+        <div><span>Exclude</span><button type="button" className={`outlier-toggle ${activityExcludedNames.length ? "active" : ""}`} onClick={() => setActivityExcludeOpen((value) => !value)} aria-expanded={activityExcludeOpen} aria-controls="activity-exclude">{activityExcludedNames.length ? `${activityExcludedNames.length} excluded` : "None"}</button></div>
       </div>
+      {activityExcludeOpen && <div className="activity-exclude" id="activity-exclude">
+        <div className="activity-exclude-head"><span>Leave these categories out of the heat map</span>{activityExcludedCategories.length > 0 && <button type="button" onClick={() => { setActivityExcludedCategories([]); setSelectedActivityDate(null); }}>Clear</button>}</div>
+        {activityCategoryOptions.length ? <div className="activity-exclude-options">{activityCategoryOptions.map((option) => {
+          const excluded = activityExcludedCategories.includes(option.key);
+          return <button type="button" key={option.key} className={`outlier-toggle ${excluded ? "active" : ""}`} onClick={() => toggleActivityCategory(option.key)} aria-pressed={excluded} aria-label={`${excluded ? "Include" : "Exclude"} ${option.type} category ${option.name}`}>{categoryEmoji(option.name)} {option.name}{effectiveActivityView === "both" && <small>{option.type === "expense" ? "out" : "in"}</small>}</button>;
+        })}</div> : <p>No categories with transactions yet.</p>}
+      </div>}
         <div className="activity-months" data-span={activitySpan}>
           {activityMonths.map((month) => (
             <section className="activity-month" key={month.key}>
@@ -1208,6 +1249,7 @@ function ReportsPanel({ transactions, selectedDate, currency, categoryEmoji, inc
               <span>Income <b>{money(activityAverages.incomePerDay, currency)}</b> per day{activitySpan > 1 && <> · <b>{money(activityAverages.income, currency)}</b> per month</>}</span>
             )}
             <small>{activitySpan === 1 ? "Averaged over the days so far this month." : `Averaged over ${activitySpan} months, each month shown above.`}</small>
+            {activityExcludedNames.length > 0 && <small className="activity-excluded-note">Excluding {activityExcludedNames.join(", ")}.</small>}
           </div>
       {selectedActivityDate && <ReportDetailPanel title={longDate(selectedActivityDate)} subtitle={effectiveActivityView === "both" ? "Cash flow activity" : effectiveActivityView === "expense" ? "Expenditure activity" : "Income activity"} items={activityDetails} currency={currency} categoryEmoji={categoryEmoji} onEdit={onEditTransaction} onClose={() => setSelectedActivityDate(null)} />}
     </section>

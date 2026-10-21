@@ -419,3 +419,20 @@ test("the heat map reports averages per day as well as per month", async () => {
   assert.match(app, /className=\{`activity-cell/);
   assert.match(app, /setSelectedDate/);
 });
+
+test("the heat map can exclude whole categories", async () => {
+  const [app, styles] = await Promise.all([
+    readFile(new URL("app/ledger-app.tsx", root), "utf8"),
+    readFile(new URL("app/globals.css", root), "utf8"),
+  ]);
+
+  // Saved with the other chart preferences, and keyed by type so same-named categories stay apart.
+  assert.match(app, /activityExcludedCategories: string\[\];/);
+  assert.match(app, /const activityCategoryKey = \(item: Pick<Transaction, "type" \| "category">\) => `\$\{item\.type\}:\$\{item\.category\}`;/);
+  // Excluded entries leave the daily totals and the day details, not just the colour scale.
+  assert.match(app, /activityTransactions\.forEach\(\(item\) => \{/);
+  assert.match(app, /const activityDetails = selectedActivityDate \? activityTransactions\.filter\(/);
+  assert.match(app, /aria-controls="activity-exclude"/);
+  assert.match(app, /className="activity-excluded-note"/);
+  assert.match(styles, /\.activity-exclude \{/);
+});
