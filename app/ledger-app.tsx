@@ -917,7 +917,7 @@ export function LedgerApp() {
       </nav>
 
       {drawerOpen && <TransactionDrawer today={today} categories={categories} incomeHidden={incomeHidden} onClose={() => setDrawerOpen(false)} onSave={addTransaction} onSaved={() => { setDrawerOpen(false); showNotice("Transaction saved on this device."); }} />}
-      {editingTransaction && <EditTransactionDrawer transaction={editingTransaction} today={today} categories={categories} incomeHidden={incomeHidden} onClose={() => setEditingTransaction(null)} onSave={updateTransaction} onDelete={removeTransaction} onSaved={() => { setEditingTransaction(null); showNotice("Entry updated on this device."); }} onDeleted={() => { setEditingTransaction(null); showNotice("Entry deleted."); }} />}
+      {editingTransaction && <EditTransactionDrawer transaction={editingTransaction} today={today} categories={categories} incomeHidden={incomeHidden} onClose={() => setEditingTransaction(null)} onSave={updateTransaction} onDelete={removeTransaction} onSaved={() => { setEditingTransaction(null); showNotice("Entry updated on this device."); }} onDeleted={() => { setEditingTransaction(null); }} />}
       {privacyUnlockOpen && <IncomePrivacyUnlock onClose={() => setPrivacyUnlockOpen(false)} onUnlocked={showIncome} />}
     </main>
   );
@@ -1724,7 +1724,7 @@ function EditTransactionDrawer({ transaction, today, categories, incomeHidden, o
   };
 
   const remove = async () => {
-    if (!window.confirm(`Delete ${transaction.note || "this entry"}? This cannot be undone.`)) return;
+    // Soft deletion goes to the Bin and offers Undo; no blocking browser dialog.
     setDeleting(true); setError("");
     try {
       await onDelete(transaction.id);
