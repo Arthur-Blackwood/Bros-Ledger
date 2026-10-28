@@ -15,6 +15,7 @@ type Transaction = {
   source: string;
   repeat?: RepeatRule | null;
   seriesId?: string;
+  seriesAnchor?: string;
 };
 
 type RepeatUnit = "day" | "week" | "month" | "year";
@@ -130,12 +131,12 @@ const readRepeatMarks = (): Record<string, string> => {
 
 // Reading also prunes: anything past the retention window is dropped on load so the
 // bin cannot grow without bound, and "recently" stays honest.
-const readDeletedTransactions = () => {
+const readDeletedTransactions = (includeExpired = false) => {
   try {
     const parsed = JSON.parse(window.localStorage.getItem(deletedTransactionsKey) ?? "[]");
     if (!Array.isArray(parsed)) return [];
     const cutoff = Date.now() - deletedRetentionDays * 86400000;
-    return (parsed as DeletedTransaction[]).filter((item) => Number.isFinite(Date.parse(item.deletedAt)) && Date.parse(item.deletedAt) >= cutoff);
+    return (parsed as DeletedTransaction[]).filter((item) => Number.isFinite(Date.parse(item.deletedAt)) && (includeExpired || Date.parse(item.deletedAt) >= cutoff));
   } catch { return []; }
 };
 
@@ -162,7 +163,7 @@ const bytesToHex = (bytes: ArrayBuffer) => Array.from(new Uint8Array(bytes), (by
 
 const derivePrivacyPinHash = async (pin: string, salt: Uint8Array) => {
   const material = await crypto.subtle.importKey("raw", new TextEncoder().encode(pin), "PBKDF2", false, ["deriveBits"]);
-  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations: 120_000 }, material, 256);
+  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: new Uint8Array(salt), iterations: 120_000 }, material, 256);
   return bytesToHex(bits);
 };
 
@@ -368,10 +369,29 @@ const occurrenceAfter = (anchorKey: string, repeat: RepeatRule, n: number) => {
   return toDateKey(target);
 };
 
+// Persist the original date on every member before Bin pruning or deletion can
+// remove the first entry. Older ledgers recover it from retained Bin history.
+const withSeriesAnchors = <T extends Transaction,>(transactions: T[], history: Transaction[] = []): T[] => {
+  const anchors = new Map<string, string>();
+  for (const item of [...transactions, ...history]) {
+    const key = item.seriesId ?? item.id;
+    const candidate = item.seriesAnchor ?? item.occurredAt;
+    const previous = anchors.get(key);
+    if (!previous || candidate < previous) anchors.set(key, candidate);
+  }
+  return transactions.map((item) => ({ ...item, seriesAnchor: anchors.get(item.seriesId ?? item.id)! }));
+};
+
+const restoreDeletedEntry = (item: DeletedTransaction): Transaction => {
+  const restored: Transaction & { deletedAt?: string } = { ...item };
+  delete restored.deletedAt;
+  return restored;
+};
+
 // Fills in occurrences that fell due while the app was closed.
 const materialiseRepeats = (transactions: Transaction[], today: string, marks: Record<string, string>) => {
   const series = new Map<string, Transaction[]>();
-  for (const item of transactions) {
+  for (const item of withSeriesAnchors(transactions)) {
     const key = item.seriesId ?? item.id;
     const bucket = series.get(key) ?? [];
     bucket.push(item);
@@ -383,21 +403,22 @@ const materialiseRepeats = (transactions: Transaction[], today: string, marks: R
     const sorted = [...items].sort((left, right) => left.occurredAt.localeCompare(right.occurredAt));
     const anchor = sorted[0];
     const latest = sorted[sorted.length - 1];
+    const anchorKey = anchor.seriesAnchor ?? anchor.occurredAt;
     const repeat = normaliseRepeat(latest.repeat);
     if (!repeat) continue;
     const mark = marks[seriesId];
     const cursor = mark && mark > latest.occurredAt ? mark : latest.occurredAt;
     let index = 0;
-    while (occurrenceAfter(anchor.occurredAt, repeat, index) < cursor && index < 100000) index += 1;
+    while (occurrenceAfter(anchorKey, repeat, index + 1) <= cursor && index < 100000) index += 1;
     let guard = 0;
     let last = cursor;
-    let next = occurrenceAfter(anchor.occurredAt, repeat, index + 1);
-    while (next <= today && guard < maxGeneratedPerLoad) {
-      created.push({ ...latest, id: crypto.randomUUID(), seriesId, occurredAt: next, source: "repeat" });
+    let next = occurrenceAfter(anchorKey, repeat, index + 1);
+    while (next <= today && guard < maxGeneratedPerLoad && created.length < maxGeneratedPerLoad) {
+      created.push({ ...latest, id: crypto.randomUUID(), seriesId, seriesAnchor: anchorKey, occurredAt: next, source: "repeat" });
       last = next;
       guard += 1;
       index += 1;
-      next = occurrenceAfter(anchor.occurredAt, repeat, index + 1);
+      next = occurrenceAfter(anchorKey, repeat, index + 1);
     }
     if (last !== cursor || mark === undefined) nextMarks[seriesId] = last;
   }
@@ -544,17 +565,19 @@ export function LedgerApp() {
   };
 
   useEffect(() => {
-    const stored = readLocalTransactions();
+    // Recover anchors before expiring old Bin entries.
+    const deletedHistory = readDeletedTransactions(true);
+    const stored = withSeriesAnchors(readLocalTransactions(), deletedHistory);
     const marks = readRepeatMarks();
     const due = materialiseRepeats(stored, toDateKey(), marks);
     const withRepeats = due.created.length ? [...due.created, ...stored] : stored;
+    saveLocalTransactions(withRepeats);
     if (due.created.length) {
-      saveLocalTransactions(withRepeats);
       showNotice(`${due.created.length} repeating ${due.created.length === 1 ? "entry" : "entries"} added.`);
     }
     saveRepeatMarks(due.marks);
     setTransactions(withRepeats);
-    const pruned = readDeletedTransactions();
+    const pruned = withSeriesAnchors(readDeletedTransactions(), [...stored, ...deletedHistory]);
     setDeletedTransactions(pruned);
     saveDeletedTransactions(pruned);
     setCategories(readLocalCategories());
@@ -677,7 +700,7 @@ export function LedgerApp() {
     if (!Number.isFinite(draft.amount) || draft.amount <= 0) throw new Error("Enter an amount greater than zero.");
     const newId = crypto.randomUUID();
     const transaction: Transaction = {
-      id: newId, seriesId: newId, repeat: normaliseRepeat(draft.repeat), occurredAt: draft.date, type: draft.type, amountCents: Math.round(draft.amount * 100),
+      id: newId, seriesId: newId, seriesAnchor: draft.date, repeat: normaliseRepeat(draft.repeat), occurredAt: draft.date, type: draft.type, amountCents: Math.round(draft.amount * 100),
       currency: currencyPreference, category: draft.category, account: draft.account.trim() || "Everyday", note: draft.note, tags: [], source: "manual",
     };
     const next = [transaction, ...transactions];
@@ -725,11 +748,7 @@ export function LedgerApp() {
     const undoRestore = ledgerSnapshot();
     const target = deletedTransactions.find((item) => item.id === id);
     if (!target) return;
-    const restored: Transaction = {
-      id: target.id, occurredAt: target.occurredAt, type: target.type, amountCents: target.amountCents,
-      currency: target.currency, category: target.category, account: target.account, note: target.note,
-      tags: target.tags, source: target.source,
-    };
+    const restored = restoreDeletedEntry(target);
     const nextDeleted = deletedTransactions.filter((item) => item.id !== id);
     const next = [restored, ...transactions];
     saveDeletedTransactions(nextDeleted);
@@ -1131,9 +1150,10 @@ function ReportsPanel({ transactions, selectedDate, currency, categoryEmoji, inc
 
   const shareExplorer = async () => {
     const text = `${effectiveExplorerType === "expense" ? "Expenditure" : "Income"} total for ${explorerPeriodMeta.label.toLowerCase()}: ${money(explorerTotal, currency)}. Highest ${money(explorerHighest, currency)}, lowest ${money(explorerLowest, currency)}, average ${money(explorerAverage, currency)}.`;
-    if (navigator.share) await navigator.share({ title: "Bro's Ledger report", text });
+    const canShare = typeof navigator.share === "function";
+    if (canShare) await navigator.share({ title: "Bro's Ledger report", text });
     else await navigator.clipboard.writeText(text);
-    setShareStatus(navigator.share ? "Shared" : "Copied");
+    setShareStatus(canShare ? "Shared" : "Copied");
     window.setTimeout(() => setShareStatus(""), 1800);
   };
 
@@ -1775,6 +1795,11 @@ function BinPanel({ items, categoryEmoji, retentionDays, onRestore, onPurge, onP
   onPurgeAll: () => Promise<void>;
 }) {
   const [confirmingPurgeAll, setConfirmingPurgeAll] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
   const ordered = useMemo(() => [...items].sort((left, right) => right.deletedAt.localeCompare(left.deletedAt)), [items]);
 
   return <div className="transactions-page">
@@ -1785,7 +1810,7 @@ function BinPanel({ items, categoryEmoji, retentionDays, onRestore, onPurge, onP
       </div>
       {ordered.length ? <div className="deleted-list">
         {ordered.map((item) => {
-          const elapsed = Math.floor((Date.now() - Date.parse(item.deletedAt)) / 86400000);
+          const elapsed = Math.floor((now - Date.parse(item.deletedAt)) / 86400000);
           const daysLeft = Math.max(0, retentionDays - elapsed);
           return <div className="deleted-row" key={item.id}>
             <div className="category-icon" style={{ background: `${categoryMeta[item.category]?.color ?? categoryMeta.Other.color}30` }}>{categoryEmoji(item.category)}</div>

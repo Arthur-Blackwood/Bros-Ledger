@@ -33,15 +33,17 @@ Any entry can repeat: **Daily, Weekly, Fortnightly, Monthly, Yearly**, or a cust
 
 Occurrences that fell due while the app was closed are written in on the next load, tagged so they can be told apart from entries you typed. Three details worth knowing:
 
-- Each occurrence is measured from the **first** entry in the series, not the previous one, so a monthly rule set on the 31st goes 31 January → 28 February → **31 March** rather than sliding to the 28th permanently.
+- Each occurrence is measured from the **original series date**, saved as `seriesAnchor` on every entry, so a monthly rule set on the 31st goes 31 January → 28 February → **31 March**. Deleting the first entry does not shift the schedule. Older ledgers recover that date from available Bin history before the Bin is pruned; dates already permanently removed by an older version cannot be reconstructed reliably.
 - Deleting a generated entry **keeps it deleted**. A per-series high-water mark is stored in `bros-ledger:repeat-marks:v1`, so the generator never walks backwards.
-- Generation is capped at 400 entries per load, so a daily rule backdated by years cannot flood the ledger in one go.
+- Generation is capped at 400 entries per load across all series, so a daily rule backdated by years cannot flood the ledger in one go. The next load continues from the saved progress.
 
 Editing an entry updates the rule for everything generated after it; clearing the rule stops the series.
 
 ### Bin
 
 Deleting an entry moves it to the Bin rather than discarding it. Each row shows how long it has left, and can be restored to the ledger or removed for good. Anything older than **30 days** is pruned automatically the next time the app loads.
+
+Restoring preserves the original repeat rule, series identifier, and series date. A stopped rule stays stopped.
 
 Restoring and permanently deleting are both undoable: the confirmation that appears offers an **Undo** for five seconds, after which it clears itself. Removing a category can be undone the same way.
 
@@ -93,10 +95,11 @@ Open the URL printed in the terminal. Each browser profile starts with an empty 
 | `npm run dev` | Start the development server |
 | `npm run build` | Create a production build |
 | `npm start` | Serve the production build |
-| `npm test` | Build, then run the smoke tests in `tests/` |
+| `npm test` | Build, then run source smoke checks and executable regression tests in `tests/` |
+| `npm run typecheck` | Check application and Worker types without writing build cache files |
 | `npm run lint` | Run ESLint across the project |
 
-Run `npm test` and `npm run lint` before pushing a change.
+Run `npm test`, `npm run lint`, and `npm run typecheck` before pushing a change. Regression tests cover month-end and leap-year schedules, deletion and restoration, generation progress, the shared catch-up cap, legacy CSV, and PIN verification.
 
 ## Project structure
 
