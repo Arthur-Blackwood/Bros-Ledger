@@ -156,3 +156,14 @@ test("merging a newer backup into an existing series never recreates imported de
   assert.ok(merged.deletedTransactions.some(e => e.id === "demo-monthly-deleted"));
   assert.equal(merged.repeatMarks["demo-monthly"], "2026-09-30");
 });
+
+test("heat-map exclusions remove only the selected transaction type and category", () => {
+  const keySource = source.slice(source.indexOf('const activityCategoryKey ='), source.indexOf('const activityLevel ='));
+  const filterSource = source.slice(source.indexOf('  const activityTransactions = useMemo('), source.indexOf('  const activityCategoryOptions = useMemo('));
+  const transactions = [entry({ id: 'expense', category: 'Subscription' }), entry({ id: 'income', type: 'income', category: 'Subscription' }), entry({ id: 'other', category: 'Other' })];
+  const context = vm.createContext({ transactions, activityExcludedCategories: ['expense:Subscription'], useMemo: callback => callback() });
+  vm.runInContext(ts.transpileModule(`${keySource}\n${filterSource}\nglobalThis.result = activityTransactions;`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context);
+  assert.equal(context.result.length, 2);
+  assert.ok(context.result.some(item => item.id === 'income'));
+  assert.ok(context.result.some(item => item.id === 'other'));
+});
