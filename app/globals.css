@@ -565,3 +565,12 @@ button:disabled { cursor: not-allowed; }
 .activity-cell.income-only .activity-income-pill { box-shadow: 0 0 8px rgba(139,123,255,.5), 0 0 16px rgba(72,213,151,.3), inset 0 1px 0 rgba(255,255,255,.72); }
 :root[data-theme][data-palette] .activity-legend i.income.level-1, :root[data-theme][data-palette] .activity-legend i.income.level-2, :root[data-theme][data-palette] .activity-legend i.income.level-3, :root[data-theme][data-palette] .activity-legend i.income.level-4 { background: linear-gradient(110deg, #ff5f6d, #ffc371, #48d597, #53b8ff, #8b7bff, #ef70c9); background-size: 220% 220%; box-shadow: 0 0 7px rgba(139,123,255,.45); animation: incomeRainbow 7s ease-in-out infinite; }
 @keyframes incomeRainbow { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+
+/* Transfer review uses the same accessible drawer as entry editing. */
+.import-filename { overflow-wrap: anywhere; margin: 20px 0; color: var(--muted); font-size: 13px; }
+.import-stats { display: grid; gap: 0; margin: 20px 0; }
+.import-stats > div { display: flex; justify-content: space-between; gap: 18px; padding: 13px 0; border-bottom: 1px solid var(--line); }
+.import-stats dt { color: var(--muted); font-size: 13px; }
+.import-stats dd { margin: 0; font-weight: 700; }
+.import-note { font-size: 13px; line-height: 1.6; color: var(--muted); }
+.import-cancel { width: 100%; margin-top: 12px; }

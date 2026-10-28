@@ -98,8 +98,9 @@ test("deploys without a shared cloud database", async () => {
 
 test("supports the existing Bro's Ledger CSV columns", async () => {
   const app = await readFile(new URL("app/ledger-app.tsx", root), "utf8");
-  for (const column of ["Date", "Category", "Note", "Account", "Amount"]) assert.match(app, new RegExp(`"${column}"`));
-  assert.match(app, /transactionsFromCsv/);
+  const transfer = await readFile(new URL("lib/ledger-transfer.ts", root), "utf8");
+  for (const column of ["Date", "Category", "Note", "Account", "Amount"]) assert.match(transfer, new RegExp(`"${column}"`));
+  assert.match(app, /parseImport/);
 });
 
 test("the seven-day chart saves outlier scaling and opens the matching ledger day", async () => {

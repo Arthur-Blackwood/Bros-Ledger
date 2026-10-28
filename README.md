@@ -25,7 +25,9 @@ Built with Next.js 16 and React 19, bundled by Vite through [vinext](https://www
 ### Transactions
 
 - The full ledger grouped by date, with inline editing and deletion.
-- CSV import and export using the columns `Date, Category, Note, Account, Amount`. Positive amounts are treated as income, negative amounts as expenses. Categories that do not exist yet are created on import.
+- CSV v2 import and export. The first five columns remain `Date, Category, Note, Account, Amount`; additional columns preserve currency, entry and series IDs, repeat rules, the original series date, generation progress, source and tags. Positive amounts are income and negative amounts are expenses. Five-column legacy files remain supported.
+- Complete JSON backups include transactions, the Bin, category order, repeat progress, theme, palette, currency and chart preferences. The privacy PIN stays on this device. Unlock income before exporting a complete backup.
+- Imports show a preview before saving, retain existing entries and save a downloadable pre-import backup.
 
 ### Repeating entries
 
@@ -75,7 +77,7 @@ Because local storage is scoped to an origin and a browser profile, each browser
 
 Income is hidden by default and revealed with a 5-digit PIN you set on first run. The PIN itself is never stored — only a PBKDF2-SHA-256 hash (120,000 iterations) and a random 16-byte salt.
 
-**The PIN hides income in the interface. It does not encrypt your data.** Transactions are stored as plain JSON, so anyone who can open developer tools on your device can read the whole ledger, income included, without ever entering the PIN. Treat it as a shield against someone glancing at your screen, not as a lock on the data. While income is hidden it is also excluded from totals, charts and CSV exports — the export notice tells you exactly how many entries were withheld.
+**The PIN hides income in the interface. It does not encrypt your data.** Transactions are stored as plain JSON, so anyone who can open developer tools on your device can read the whole ledger, income included, without ever entering the PIN. Treat it as a shield against someone glancing at your screen, not as a lock on the data. While income is hidden it is also excluded from totals, charts and CSV exports — the export notice tells you exactly how many entries were withheld. Complete backups require unlocking income first.
 
 ## Run locally
 
@@ -127,9 +129,34 @@ Everything is stored under `bros-ledger:*` keys in the browser’s local storage
 | `bros-ledger:palette:v1` | Colour palette preference |
 | `bros-ledger:currency:v1` | Display currency |
 | `bros-ledger:repeat-marks:v1` | How far each repeating series has been generated |
+| `bros-ledger:pre-import-backup:v1` | The ledger immediately before the most recent import, plus interrupted-import recovery state |
 | `bros-ledger:week-outlier-filter:v1` | Seven-day chart outlier setting |
 | `bros-ledger:report-chart-preferences:v1` | Saved report chart settings |
 
 Two legacy `daylight-ledger:*` keys are read once and migrated forward.
 
-Clearing site data, browsing privately, or moving to another browser or device means starting from an empty ledger. **Export a CSV regularly** — it is the only backup.
+Clearing site data, browsing privately, or moving to another browser or device means starting from an empty ledger. **Export complete JSON backups regularly.** CSV v2 preserves repeat settings for active entries; a complete backup also preserves the Bin, categories and preferences.
+
+## Transfer and migration
+
+1. In the original browser and original website address, unlock income. Choose **Complete backup** in Transactions and keep the JSON file. Browser storage belongs to that browser profile and address; a new local preview cannot read the original site's data.
+2. In the destination ledger, choose **Import file** and select a JSON backup or CSV. Review counts, currencies, repeat settings and duplicates before confirming. Cancel changes nothing.
+3. Existing IDs are kept, including records in the Bin. When a record differs, the existing record wins. Imports do not replace live series rules or restart a stopped series. Preferences and category order are restored to an empty ledger; an existing ledger keeps its settings.
+4. Reopen the ledger to generate any repeating entries that fell due. Progress prevents previously deleted occurrences from being generated again. Monthly and yearly rules retain their original day, including month ends and leap years.
+5. After an import, **Pre-import backup** downloads the previous ledger as a complete JSON backup. Only the latest pre-import snapshot is retained. Imports use a persisted rollback journal: insufficient storage rejects the import, later write failures restore the previous values, and an interrupted import is recovered before the app opens. Keep only one ledger tab open while importing.
+
+A five-column legacy CSV has no repeat rules, recorded currency, or IDs. The importer uses the selected currency and compares exact transaction contents and occurrence counts to skip matching entries, including entries created by the old importer. If an old entry has since been edited, a legacy file cannot reliably identify it; review the proposed additions. Missing repeat rules cannot be inferred. Prefer CSV v2 or a complete backup when the original browser data is still available.
+
+Backups and CSV files contain readable ledger data. Keep them private. The recovery journal stores only ledger data and preferences, never the PIN hash or salt. These transfer changes do not add a server database or device sync; native iCloud sync is a later phase.
+
+### Reproducible demo data
+
+Run `node scripts/generate-test-data.mjs` to generate fictional fixtures and copies in `outputs/test-data/`:
+
+| File | Expected result |
+| --- | --- |
+| `legacy-test.csv` | 24 entries: 22 expenses totalling AUD 1,583.83 and 2 income entries totalling AUD 5,600.15. Includes quoted commas, quotes and a multiline note. |
+| `recurring-test-v2.csv` | 10 active entries, 5 repeating series, AUD and USD, saved deletion progress and a stopped subscription. On 28 October 2026, reopening adds exactly 3 due entries; another reopening adds none. |
+| `complete-test-backup.json` | The same 10 active entries plus 3 Bin records, categories and preferences. |
+
+Executable tests cover transfer round trips, repeated imports, retained edits and stops, invalid final rows, malformed metadata, precise amounts, quota failures and recovery after an interrupted import. Browser checks also exercised imports, preview cancellation, due-entry generation, actual CSV/JSON downloads, and the pre-import backup with fictional data.

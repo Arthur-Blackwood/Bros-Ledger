@@ -2,6 +2,9 @@
 
 import { FormEvent, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode, useDeferredValue, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 
+import { createBackup, mergeImport, parseImport, transactionsToCsv, type LedgerData, type MergeResult, type ParsedImport } from "../lib/ledger-transfer";
+import { importJournalKey, preImportValues, recoverPendingImport, writeImportAtomically } from "../lib/ledger-import-storage";
+
 type Transaction = {
   id: string;
   occurredAt: string;
@@ -179,47 +182,6 @@ const verifyPrivacyPin = async (pin: string) => {
   const expected = window.localStorage.getItem(privacyPinHashKey);
   if (!salt || !expected) return false;
   return await derivePrivacyPinHash(pin, base64ToBytes(salt)) === expected;
-};
-
-const parseCsvRows = (text: string) => {
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let field = "";
-  let quoted = false;
-  for (let index = 0; index < text.length; index += 1) {
-    const character = text[index];
-    if (quoted) {
-      if (character === '"' && text[index + 1] === '"') { field += '"'; index += 1; }
-      else if (character === '"') quoted = false;
-      else field += character;
-    } else if (character === '"') quoted = true;
-    else if (character === ",") { row.push(field); field = ""; }
-    else if (character === "\n") { row.push(field.replace(/\r$/, "")); rows.push(row); row = []; field = ""; }
-    else field += character;
-  }
-  if (field || row.length) { row.push(field.replace(/\r$/, "")); rows.push(row); }
-  return rows.filter((item) => item.some((value) => value.trim()));
-};
-
-const transactionsFromCsv = (text: string, currency: string) => {
-  const rows = parseCsvRows(text.replace(/^\uFEFF/, ""));
-  if (rows.length < 2) throw new Error("The CSV file has no transactions.");
-  const headers = rows[0].map((value) => value.trim().toLowerCase());
-  const required = ["date", "category", "note", "account", "amount"];
-  const indexes = Object.fromEntries(required.map((name) => [name, headers.indexOf(name)])) as Record<string, number>;
-  if (required.some((name) => indexes[name] < 0)) throw new Error("Use the Bro's Ledger CSV columns: Date, Category, Note, Account and Amount.");
-  return rows.slice(1).map((row, rowIndex) => {
-    const occurredAt = row[indexes.date]?.trim();
-    const rawAmount = row[indexes.amount]?.trim().replace(/[A-Z$\s,]/gi, "").replace("−", "-");
-    const amount = Number(rawAmount);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(occurredAt) || !Number.isFinite(amount) || amount === 0) throw new Error(`CSV row ${rowIndex + 2} has an invalid date or amount.`);
-    const type: Transaction["type"] = amount > 0 ? "income" : "expense";
-    return {
-      id: crypto.randomUUID(), occurredAt, type, amountCents: Math.round(Math.abs(amount) * 100), currency,
-      category: row[indexes.category]?.trim() || (type === "income" ? "Income" : "Other"),
-      note: row[indexes.note] ?? "", account: row[indexes.account]?.trim() || "Everyday", tags: [], source: "csv",
-    } satisfies Transaction;
-  });
 };
 
 const themePreferenceKey = "bros-ledger:theme:v1";
@@ -489,6 +451,10 @@ export function LedgerApp() {
   const [deletedTransactions, setDeletedTransactions] = useState<DeletedTransaction[]>([]);
   const [categories, setCategories] = useState<LedgerCategory[]>([]);
   const [loading, setLoading] = useState(true);
+  const [storageError, setStorageError] = useState("");
+  const [pendingImport, setPendingImport] = useState<{ name: string; parsed: ParsedImport; preview: MergeResult } | null>(null);
+  const [importError, setImportError] = useState("");
+  const [hasPreviousBackup, setHasPreviousBackup] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [notice, setNotice] = useState<AppNotice | null>(null);
@@ -565,6 +531,17 @@ export function LedgerApp() {
   };
 
   useEffect(() => {
+    try {
+      const recovered = recoverPendingImport(window.localStorage);
+      if (recovered) {
+        setThemePreference(readThemePreference()); setPalettePreference(readPalettePreference()); setCurrencyPreference(readCurrencyPreference());
+        showNotice("The interrupted import was rolled back. Your previous ledger was recovered.");
+      }
+      setHasPreviousBackup(Boolean(preImportValues(window.localStorage)));
+    } catch (error) {
+      setStorageError(error instanceof Error ? error.message : "Could not recover the interrupted import.");
+      setLoading(false); return;
+    }
     // Recover anchors before expiring old Bin entries.
     const deletedHistory = readDeletedTransactions(true);
     const stored = withSeriesAnchors(readLocalTransactions(), deletedHistory);
@@ -654,46 +631,69 @@ export function LedgerApp() {
     window.setTimeout(() => dismissNotice(), 2600);
   };
 
-  const exportCsv = () => {
-    const escapeCsv = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`;
-    const rows = visibleTransactions.map((item) => [
-      item.occurredAt,
-      item.category,
-      item.note,
-      item.account,
-      ((item.type === "income" ? 1 : -1) * item.amountCents / 100).toFixed(2),
-    ]);
-    const csv = [["Date", "Category", "Note", "Account", "Amount"], ...rows]
-      .map((row) => row.map(escapeCsv).join(","))
-      .join("\r\n");
-    const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = incomeHidden ? `bros-ledger-expenses-only-${today}.csv` : `bros-ledger-${today}.csv`;
-    anchor.click();
-    URL.revokeObjectURL(url);
-    const exported = visibleTransactions.length;
-    const withheld = transactions.length - exported;
-    showNotice(withheld
-      ? `${exported} expense${exported === 1 ? "" : "s"} exported. ${withheld} income ${withheld === 1 ? "entry is" : "entries are"} withheld while income is hidden \u2014 unlock income to include ${withheld === 1 ? "it" : "them"}.`
-      : `${exported} transaction${exported === 1 ? "" : "s"} exported.`);
+  const ledgerData = (): LedgerData => ({
+    transactions: readLocalTransactions(), deletedTransactions: readDeletedTransactions(true), categories: readLocalCategories(), repeatMarks: readRepeatMarks(),
+    preferences: { currency: readCurrencyPreference(), theme: readThemePreference(), palette: readPalettePreference(),
+      weekOutlierFilter: window.localStorage.getItem(weekOutlierFilterKey) === "true", reportChartPreferences: { ...readReportChartPreferences() } },
+  });
+  const downloadFile = (content: string, name: string, mime: string) => {
+    const url = URL.createObjectURL(new Blob([content], { type: mime }));
+    const link = document.createElement("a"); link.href = url; link.download = name; link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
-
-  const importCsv = async (file: File) => {
-    const imported = transactionsFromCsv(await file.text(), currencyPreference);
-    const nextTransactions = [...imported, ...transactions];
-    saveLocalTransactions(nextTransactions);
-    setTransactions(nextTransactions);
-    const nextCategories = [...categories];
-    imported.forEach((item) => {
-      if (!nextCategories.some((category) => category.name.toLowerCase() === item.category.toLowerCase())) {
-        nextCategories.push({ id: crypto.randomUUID(), name: item.category, emoji: "✨", type: item.type });
+  const exportCsv = () => {
+    const data = ledgerData();
+    const selected = incomeHidden ? data.transactions.filter(item => item.type === "expense") : data.transactions;
+    downloadFile(transactionsToCsv(data, selected), incomeHidden ? `bros-ledger-expenses-only-${today}.csv` : `bros-ledger-${today}.csv`, "text/csv;charset=utf-8");
+    const withheld = data.transactions.length - selected.length;
+    showNotice(withheld ? `${selected.length} expenses exported with repeat settings. ${withheld} income entries withheld; unlock income for a full export.` : `${selected.length} transactions exported with repeat settings.`);
+  };
+  const exportBackup = (previous = false) => {
+    if (incomeHidden) { setPrivacyUnlockOpen(true); showNotice("Unlock income, then choose Complete backup again."); return; }
+    try {
+      let data = ledgerData();
+      if (previous) {
+        const values = preImportValues(window.localStorage);
+        if (!values) throw new Error("There is no pre-import backup on this device yet.");
+        data = { transactions: JSON.parse(values[localTransactionsKey] ?? "[]"), deletedTransactions: JSON.parse(values[deletedTransactionsKey] ?? "[]"),
+          categories: JSON.parse(values[localCategoriesKey] ?? "[]"), repeatMarks: JSON.parse(values[repeatMarksKey] ?? "{}"),
+          preferences: { currency: values[currencyPreferenceKey] ?? fallbackCurrency, theme: values[themePreferenceKey] ?? "system", palette: values[palettePreferenceKey] ?? "mono",
+            weekOutlierFilter: values[weekOutlierFilterKey] === "true", reportChartPreferences: JSON.parse(values[reportChartPreferencesKey] ?? "{}") } };
       }
-    });
-    saveLocalCategories(nextCategories);
-    setCategories(nextCategories);
-    showNotice(`${imported.length} transaction${imported.length === 1 ? "" : "s"} imported from CSV.`);
+      const backup = createBackup(data);
+      // Verify that a complete backup can be parsed before offering the file.
+      const json = JSON.stringify(backup, null, 2); parseImport(json, data.preferences.currency);
+      downloadFile(json, `bros-ledger-${previous ? "before-import-" : "backup-"}${today}.json`, "application/json");
+      showNotice("Complete backup exported: income, Bin, categories, repeat settings and progress. Your privacy PIN stays on this device.");
+    } catch (error) { showNotice(error instanceof Error ? error.message : "Could not export a complete backup."); }
+  };
+  const importFile = async (file: File) => {
+    if (file.size > 50_000_000) throw new Error("Choose a file smaller than 50 MB.");
+    const parsed = parseImport(await file.text(), currencyPreference);
+    const preview = mergeImport(ledgerData(), parsed);
+    setImportError(""); setPendingImport({ name: file.name, parsed, preview });
+  };
+  const confirmImport = () => {
+    if (!pendingImport) return;
+    try {
+      // Re-read storage at confirmation so another tab's recent changes are retained.
+      const next = mergeImport(ledgerData(), pendingImport.parsed);
+      const changes = {
+        [localTransactionsKey]: JSON.stringify(next.transactions), [deletedTransactionsKey]: JSON.stringify(next.deletedTransactions),
+        [localCategoriesKey]: JSON.stringify(next.categories), [repeatMarksKey]: JSON.stringify(next.repeatMarks),
+        [currencyPreferenceKey]: next.preferences.currency, [themePreferenceKey]: next.preferences.theme, [palettePreferenceKey]: next.preferences.palette,
+        [weekOutlierFilterKey]: String(next.preferences.weekOutlierFilter ?? false), [reportChartPreferencesKey]: JSON.stringify(next.preferences.reportChartPreferences ?? readReportChartPreferences()),
+      };
+      writeImportAtomically(window.localStorage, changes);
+      setTransactions(next.transactions); setDeletedTransactions(next.deletedTransactions); setCategories(next.categories);
+      setCurrencyPreference(next.preferences.currency); setThemePreference(next.preferences.theme as ThemePreference); setPalettePreference(next.preferences.palette as PalettePreference);
+      setWeekFilterOutliers(next.preferences.weekOutlierFilter ?? false); setHasPreviousBackup(true); setPendingImport(null);
+      showNotice(`${next.added} records imported; ${next.skipped} duplicates skipped. A pre-import backup is saved on this device. Reopen the app to add any due repeating entries.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not import this file.";
+      setImportError(message);
+      if (message.includes("Stop editing") || message.includes("needs recovery")) setStorageError(message);
+    }
   };
 
   const addTransaction = async (draft: TransactionDraft) => {
@@ -804,6 +804,7 @@ export function LedgerApp() {
     showNotice("Category removed.", undoCategory);
   };
 
+  if (storageError) return <main className="auth-shell"><div className="auth-card"><h1>Import recovery needed</h1><p role="alert">{storageError}</p><p>Your recovery data remains on this device. Keep this browser&apos;s site data.</p><button onClick={() => downloadFile(window.localStorage.getItem(importJournalKey) ?? "{}", "bros-ledger-import-recovery.json", "application/json")}>Save recovery data</button></div></main>;
   if (pinReady === null) return <AuthLoading />;
   if (!pinReady) return <PrivacyPinSetup onCreated={() => setPinReady(true)} />;
 
@@ -900,7 +901,7 @@ export function LedgerApp() {
           <ReportsPanel transactions={visibleTransactions} selectedDate={selectedDate} currency={currency} categoryEmoji={categoryEmoji} incomeHidden={incomeHidden} onShowTransactions={() => { setTransactionFocusDate(null); setView("transactions"); }} onEditTransaction={(transaction) => { setTransactionFocusDate(null); setView("transactions"); setEditingTransaction(transaction); }} />
         )}
 
-        {view === "transactions" && <TransactionsPanel groups={reportGroups} focusDate={transactionFocusDate} currency={currency} categoryEmoji={categoryEmoji} onEdit={setEditingTransaction} onExport={exportCsv} onImport={importCsv} onAdd={() => setDrawerOpen(true)} />}
+        {view === "transactions" && <TransactionsPanel groups={reportGroups} focusDate={transactionFocusDate} currency={currency} categoryEmoji={categoryEmoji} onEdit={setEditingTransaction} onExport={exportCsv} onBackup={() => exportBackup()} onPreviousBackup={hasPreviousBackup ? () => exportBackup(true) : undefined} onImport={importFile} onAdd={() => setDrawerOpen(true)} />}
 
         {view === "deleted" && <BinPanel items={visibleDeleted} categoryEmoji={categoryEmoji} retentionDays={deletedRetentionDays} onRestore={restoreTransaction} onPurge={purgeTransaction} onPurgeAll={purgeAllTransactions} />}
 
@@ -917,6 +918,7 @@ export function LedgerApp() {
       </nav>
 
       {drawerOpen && <TransactionDrawer today={today} categories={categories} incomeHidden={incomeHidden} onClose={() => setDrawerOpen(false)} onSave={addTransaction} onSaved={() => { setDrawerOpen(false); showNotice("Transaction saved on this device."); }} />}
+      {pendingImport && <ImportPreview name={pendingImport.name} parsed={pendingImport.parsed} preview={pendingImport.preview} error={importError} onCancel={() => setPendingImport(null)} onConfirm={confirmImport} />}
       {editingTransaction && <EditTransactionDrawer transaction={editingTransaction} today={today} categories={categories} incomeHidden={incomeHidden} onClose={() => setEditingTransaction(null)} onSave={updateTransaction} onDelete={removeTransaction} onSaved={() => { setEditingTransaction(null); showNotice("Entry updated on this device."); }} onDeleted={() => { setEditingTransaction(null); }} />}
       {privacyUnlockOpen && <IncomePrivacyUnlock onClose={() => setPrivacyUnlockOpen(false)} onUnlocked={showIncome} />}
     </main>
@@ -1297,13 +1299,15 @@ function InfoCallout({ id, children }: { id: string; children: ReactNode }) {
   return <aside className="info-callout" id={id} role="note"><span>i</span><p>{children}</p></aside>;
 }
 
-function TransactionsPanel({ groups, focusDate, currency, categoryEmoji, onEdit, onExport, onImport, onAdd }: {
+function TransactionsPanel({ groups, focusDate, currency, categoryEmoji, onEdit, onExport, onBackup, onPreviousBackup, onImport, onAdd }: {
   groups: [string, Transaction[]][];
   focusDate: string | null;
   currency: string;
   categoryEmoji: (name: string) => string;
   onEdit: (transaction: Transaction) => void;
   onExport: () => void;
+  onBackup: () => void;
+  onPreviousBackup?: () => void;
   onImport: (file: File) => Promise<void>;
   onAdd: () => void;
 }) {
@@ -1345,7 +1349,7 @@ function TransactionsPanel({ groups, focusDate, currency, categoryEmoji, onEdit,
     <section className="report-table-card entry-ledger-card">
       <div className="ledger-toolbar">
         <div><p>Detailed ledger</p><h2>All entries</h2><span>{searching ? `${transactionCount} of ${totalCount} matching` : `${totalCount} transactions · Category, note, account and amount`}</span></div>
-        <div className="csv-actions"><input ref={csvInput} type="file" accept=".csv,text/csv" onChange={(event) => void importFile(event.target.files?.[0])} /><button className="csv-button" onClick={() => csvInput.current?.click()} disabled={importing}>{importing ? "Importing…" : "⇧ Import CSV"}</button><button className="csv-button" onClick={onExport} disabled={!transactionCount}>⇩ Export CSV</button></div>
+        <div className="csv-actions"><input ref={csvInput} type="file" accept=".csv,.json,text/csv,application/json" onChange={(event) => void importFile(event.target.files?.[0])} /><button className="csv-button" onClick={() => csvInput.current?.click()} disabled={importing}>{importing ? "Importing…" : "⇧ Import file"}</button><button className="csv-button" onClick={onExport} disabled={!totalCount}>⇩ Export CSV</button><button className="csv-button" onClick={onBackup}>⇩ Complete backup</button>{onPreviousBackup && <button className="csv-button" onClick={onPreviousBackup}>⇩ Pre-import backup</button>}</div>
       </div>
       <div className="ledger-search">
               <div className="ledger-search-field">
@@ -1371,6 +1375,27 @@ function TransactionsPanel({ groups, focusDate, currency, categoryEmoji, onEdit,
           </section>;
         })}
       </div></div> : searching ? <div className="ledger-empty"><span>🔍</span><h3>No matches</h3><p>Nothing matches “{deferredQuery.trim()}”. Try a note, category, account or amount.</p><button onClick={() => setQuery("")}>Clear search</button></div> : <div className="ledger-empty"><span>🌿</span><h3>No entries yet</h3><p>Add a transaction and it will appear here.</p><button onClick={onAdd}>Add transaction</button></div>}
+    </section>
+  </div>;
+}
+
+function ImportPreview({ name, parsed, preview, error, onCancel, onConfirm }: { name: string; parsed: ParsedImport; preview: MergeResult; error: string; onCancel: () => void; onConfirm: () => void }) {
+  const schedules = new Map<string, Transaction>();
+  for (const entry of [...parsed.transactions].sort((a, b) => a.occurredAt.localeCompare(b.occurredAt))) schedules.set(entry.seriesId ?? entry.id, entry);
+  const repeating = [...schedules.values()].filter(entry => entry.repeat).length;
+  const currencies = [...new Set(parsed.transactions.map(entry => entry.currency))].sort();
+  return <div className="drawer-layer" role="dialog" aria-modal="true" aria-labelledby="import-title">
+    <button className="drawer-backdrop" onClick={onCancel} aria-label="Cancel import" />
+    <section className="transaction-drawer import-preview">
+      <div className="drawer-header"><div><p>Review before saving</p><h2 id="import-title">Import preview</h2></div><button onClick={onCancel} aria-label="Close import preview">×</button></div>
+      <p className="import-filename">{name}</p>
+      <dl className="import-stats"><div><dt>Transactions in file</dt><dd>{parsed.transactions.length}</dd></div><div><dt>Bin records</dt><dd>{parsed.deletedTransactions.length}</dd></div><div><dt>Repeating series</dt><dd>{repeating}</dd></div><div><dt>New records</dt><dd>{preview.added}</dd></div><div><dt>Duplicates skipped</dt><dd>{preview.skipped}</dd></div><div><dt>Currencies</dt><dd>{currencies.join(", ") || parsed.preferences.currency}</dd></div></dl>
+      {parsed.kind === "legacy-csv" ? <p className="import-note">This older CSV has no repeat rules or recorded currencies. Its amounts use your current currency. Add repeat settings manually, or export a new CSV or complete backup from the updated website.</p> : <p className="import-note">Repeat rules, original series dates and generation progress are included. Deleted occurrences will stay deleted.</p>}
+      {parsed.kind === "backup" && <p className="import-note">Includes categories, Bin and preferences. Preferences and category order are restored to an empty ledger; your current settings are kept when merging. Your privacy PIN stays on this device.</p>}
+      {preview.conflicts > 0 && <p className="import-note">{preview.conflicts} existing records differ from this file. Your current records will be kept.</p>}
+      <p className="import-note">A recovery backup is saved before importing. Existing entries are kept. Cancel leaves your ledger unchanged.</p>
+      {error && <p className="form-error" role="alert">{error}</p>}
+      <button className="save-button" onClick={onConfirm}>Import {preview.added} new records</button><button className="csv-button import-cancel" onClick={onCancel}>Cancel</button>
     </section>
   </div>;
 }

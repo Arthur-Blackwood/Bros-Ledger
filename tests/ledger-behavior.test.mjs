@@ -4,21 +4,22 @@ import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 import test from "node:test";
 import ts from "typescript";
+import { loadTypeScript } from "../scripts/load-typescript.mjs";
+const transfer = await loadTypeScript(new URL("../lib/ledger-transfer.ts", import.meta.url));
 
 // Execute the actual application helpers without mounting React or reading a
 // browser profile. These cases supplement the existing source smoke checks.
 const source = await readFile(new URL("../app/ledger-app.tsx", import.meta.url), "utf8");
 const recurrence = source.slice(source.indexOf("const toDateKey ="), source.indexOf("const shiftMonthKey ="));
-const pin = source.slice(source.indexOf("const bytesToBase64 ="), source.indexOf("const parseCsvRows ="));
-const csv = source.slice(source.indexOf("const parseCsvRows ="), source.indexOf("const themePreferenceKey ="));
+const pin = source.slice(source.indexOf("const bytesToBase64 ="), source.indexOf("const themePreferenceKey ="));
 const binReader = source.slice(source.indexOf("const readDeletedTransactions ="), source.indexOf("const readLocalTransactions ="));
 function helpers() {
   const storage = new Map();
   const localStorage = { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) };
-  const context = vm.createContext({ crypto: webcrypto, Date, TextEncoder, btoa, atob, window: { localStorage } });
+  const context = vm.createContext({ crypto: webcrypto, Date, TextEncoder, btoa, atob, transactionsFromCsv: transfer.transactionsFromCsv, window: { localStorage } });
   const script = `const deletedTransactionsKey = "bin"; const deletedRetentionDays = 30;
     const privacyPinHashKey = "hash"; const privacyPinSaltKey = "salt";
-    ${recurrence}\n${pin}\n${csv}\n${binReader}
+    ${recurrence}\n${pin}\n${binReader}
     globalThis.api = { occurrenceAfter, materialiseRepeats, withSeriesAnchors, restoreDeletedEntry,
       createPrivacyPin, verifyPrivacyPin, transactionsFromCsv, readDeletedTransactions };`;
   vm.runInContext(ts.transpileModule(script, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context);
@@ -126,4 +127,32 @@ test("the PIN still verifies correctly after copying the PBKDF2 salt buffer", as
   assert.equal(await verifyPrivacyPin("54321"), false);
   assert.equal(storage.get("hash").length, 64);
   assert.notEqual(storage.get("hash"), "12345");
+});
+
+test("imported CSV v2 and JSON schedules continue without reviving deleted occurrences", async () => {
+  const { materialiseRepeats } = helpers();
+  for (const file of ["recurring-test-v2.csv", "complete-test-backup.json"]) {
+    const text = await readFile(new URL(`../fixtures/${file}`, import.meta.url), "utf8");
+    const parsed = transfer.parseImport(text, "AUD");
+    const due = materialiseRepeats(parsed.transactions, "2026-10-28", parsed.repeatMarks);
+    assert.equal(due.created.length, 3, file);
+    const dates = due.created.map(e => `${e.seriesId}:${e.occurredAt}`).sort();
+    assert.equal(JSON.stringify(dates), JSON.stringify(["demo-daily:2026-10-28", "demo-weekly:2026-10-22", "demo-yearly:2026-02-28"]));
+    assert.equal(materialiseRepeats([...parsed.transactions, ...due.created], "2026-10-28", due.marks).created.length, 0);
+    const monthly = parsed.transactions.filter(e => e.seriesId === "demo-monthly");
+    const monthEnd = materialiseRepeats(monthly, "2026-10-31", parsed.repeatMarks);
+    assert.equal(monthEnd.created[0].occurredAt, "2026-10-31");
+    assert.ok(!due.created.some(e => e.seriesId === "demo-stopped"));
+  }
+});
+
+test("merging a newer backup into an existing series never recreates imported deleted occurrences", async () => {
+  const { materialiseRepeats } = helpers();
+  const backup = transfer.parseImport(await readFile(new URL("../fixtures/complete-test-backup.json", import.meta.url), "utf8"), "AUD");
+  const current = { transactions: backup.transactions.filter(e => e.seriesId === "demo-monthly"), deletedTransactions: [], categories: [], repeatMarks: { "demo-monthly": "2026-02-28" }, preferences: { currency: "AUD", theme: "system", palette: "mono" } };
+  const merged = transfer.mergeImport(current, backup);
+  const due = materialiseRepeats(merged.transactions, "2026-10-28", merged.repeatMarks);
+  assert.ok(!due.created.some(e => e.seriesId === "demo-monthly"));
+  assert.ok(merged.deletedTransactions.some(e => e.id === "demo-monthly-deleted"));
+  assert.equal(merged.repeatMarks["demo-monthly"], "2026-09-30");
 });

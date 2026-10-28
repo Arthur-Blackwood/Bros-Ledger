@@ -1,0 +1,292 @@
+{
+  "transactions": [
+    {
+      "id": "demo-monthly",
+      "occurredAt": "2026-01-31",
+      "type": "expense",
+      "amountCents": 4599,
+      "currency": "AUD",
+      "category": "Subscription",
+      "account": "Everyday",
+      "note": "DEMO month-end subscription",
+      "tags": [
+        "demo"
+      ],
+      "source": "manual",
+      "repeat": {
+        "every": 1,
+        "unit": "month"
+      },
+      "seriesId": "demo-monthly",
+      "seriesAnchor": "2026-01-31"
+    },
+    {
+      "id": "demo-monthly-copy",
+      "occurredAt": "2026-02-28",
+      "type": "expense",
+      "amountCents": 4599,
+      "currency": "AUD",
+      "category": "Subscription",
+      "account": "Everyday",
+      "note": "DEMO month-end subscription",
+      "tags": [
+        "demo"
+      ],
+      "source": "repeat",
+      "repeat": {
+        "every": 1,
+        "unit": "month"
+      },
+      "seriesId": "demo-monthly",
+      "seriesAnchor": "2026-01-31"
+    },
+    {
+      "id": "demo-weekly",
+      "occurredAt": "2026-10-01",
+      "type": "expense",
+      "amountCents": 1500,
+      "currency": "AUD",
+      "category": "Subscription",
+      "account": "Everyday",
+      "note": "DEMO weekly transport",
+      "tags": [
+        "demo"
+      ],
+      "source": "manual",
+      "repeat": {
+        "every": 1,
+        "unit": "week"
+      },
+      "seriesId": "demo-weekly",
+      "seriesAnchor": "2026-10-01"
+    },
+    {
+      "id": "demo-weekly-copy",
+      "occurredAt": "2026-10-08",
+      "type": "expense",
+      "amountCents": 1500,
+      "currency": "AUD",
+      "category": "Subscription",
+      "account": "Everyday",
+      "note": "DEMO weekly transport",
+      "tags": [
+        "demo"
+      ],
+      "source": "repeat",
+      "repeat": {
+        "every": 1,
+        "unit": "week"
+      },
+      "seriesId": "demo-weekly",
+      "seriesAnchor": "2026-10-01"
+    },
+    {
+      "id": "demo-daily",
+      "occurredAt": "2026-10-25",
+      "type": "expense",
+      "amountCents": 899,
+      "currency": "AUD",
+      "category": "Subscription",
+      "account": "Everyday",
+      "note": "DEMO daily coffee",
+      "tags": [
+        "demo"
+      ],
+      "source": "manual",
+      "repeat": {
+        "every": 1,
+        "unit": "day"
+      },
+      "seriesId": "demo-daily",
+      "seriesAnchor": "2026-10-25"
+    },
+    {
+      "id": "demo-yearly",
+      "occurredAt": "2024-02-29",
+      "type": "expense",
+      "amountCents": 19999,
+      "currency": "AUD",
+      "category": "Subscription",
+      "account": "Everyday",
+      "note": "DEMO leap-day membership",
+      "tags": [
+        "demo"
+      ],
+      "source": "manual",
+      "repeat": {
+        "every": 1,
+        "unit": "year"
+      },
+      "seriesId": "demo-yearly",
+      "seriesAnchor": "2024-02-29"
+    },
+    {
+      "id": "demo-stopped",
+      "occurredAt": "2026-10-20",
+      "type": "expense",
+      "amountCents": 999,
+      "currency": "AUD",
+      "category": "Subscription",
+      "account": "Everyday",
+      "note": "DEMO stopped subscription",
+      "tags": [
+        "demo"
+      ],
+      "source": "manual",
+      "repeat": null,
+      "seriesId": "demo-stopped",
+      "seriesAnchor": "2026-10-20"
+    },
+    {
+      "id": "demo-custom",
+      "occurredAt": "2026-08-31",
+      "type": "expense",
+      "amountCents": 2500,
+      "currency": "AUD",
+      "category": "Subscription",
+      "account": "Everyday",
+      "note": "DEMO custom, \"two months\"\nMultiline note",
+      "tags": [
+        "demo"
+      ],
+      "source": "manual",
+      "repeat": {
+        "every": 2,
+        "unit": "month"
+      },
+      "seriesId": "demo-custom",
+      "seriesAnchor": "2026-08-31"
+    },
+    {
+      "id": "demo-income",
+      "occurredAt": "2026-10-01",
+      "type": "income",
+      "amountCents": 120000,
+      "currency": "AUD",
+      "category": "Income",
+      "account": "Everyday",
+      "note": "DEMO salary",
+      "tags": [
+        "demo"
+      ],
+      "source": "manual",
+      "repeat": null,
+      "seriesId": "demo-income",
+      "seriesAnchor": "2026-10-01"
+    },
+    {
+      "id": "demo-usd",
+      "occurredAt": "2026-10-10",
+      "type": "expense",
+      "amountCents": 1150,
+      "currency": "USD",
+      "category": "Subscription",
+      "account": "Everyday",
+      "note": "DEMO USD purchase",
+      "tags": [
+        "demo"
+      ],
+      "source": "manual",
+      "repeat": null,
+      "seriesId": "demo-usd",
+      "seriesAnchor": "2026-10-10"
+    }
+  ],
+  "deletedTransactions": [
+    {
+      "id": "demo-monthly-deleted",
+      "occurredAt": "2026-03-31",
+      "type": "expense",
+      "amountCents": 4599,
+      "currency": "AUD",
+      "category": "Subscription",
+      "account": "Everyday",
+      "note": "DEMO deleted month-end subscription",
+      "tags": [
+        "demo"
+      ],
+      "source": "manual",
+      "repeat": {
+        "every": 1,
+        "unit": "month"
+      },
+      "seriesId": "demo-monthly",
+      "seriesAnchor": "2026-01-31",
+      "deletedAt": "2026-10-26T10:00:00.000Z"
+    },
+    {
+      "id": "demo-weekly-deleted",
+      "occurredAt": "2026-10-15",
+      "type": "expense",
+      "amountCents": 1500,
+      "currency": "AUD",
+      "category": "Subscription",
+      "account": "Everyday",
+      "note": "DEMO deleted weekly transport",
+      "tags": [
+        "demo"
+      ],
+      "source": "manual",
+      "repeat": {
+        "every": 1,
+        "unit": "week"
+      },
+      "seriesId": "demo-weekly",
+      "seriesAnchor": "2026-10-01",
+      "deletedAt": "2026-10-26T10:00:00.000Z"
+    },
+    {
+      "id": "demo-daily-deleted",
+      "occurredAt": "2026-10-26",
+      "type": "expense",
+      "amountCents": 899,
+      "currency": "AUD",
+      "category": "Subscription",
+      "account": "Everyday",
+      "note": "DEMO deleted daily coffee",
+      "tags": [
+        "demo"
+      ],
+      "source": "manual",
+      "repeat": {
+        "every": 1,
+        "unit": "day"
+      },
+      "seriesId": "demo-daily",
+      "seriesAnchor": "2026-10-25",
+      "deletedAt": "2026-10-27T10:00:00.000Z"
+    }
+  ],
+  "categories": [
+    {
+      "id": "demo-cat-sub",
+      "name": "Subscription",
+      "emoji": "🔔",
+      "type": "expense"
+    },
+    {
+      "id": "demo-cat-income",
+      "name": "Income",
+      "emoji": "💵",
+      "type": "income"
+    }
+  ],
+  "repeatMarks": {
+    "demo-monthly": "2026-09-30",
+    "demo-weekly": "2026-10-15",
+    "demo-daily": "2026-10-27",
+    "demo-yearly": "2025-02-28",
+    "demo-stopped": "2026-10-20",
+    "demo-custom": "2026-08-31"
+  },
+  "preferences": {
+    "currency": "AUD",
+    "theme": "system",
+    "palette": "ocean",
+    "weekOutlierFilter": true,
+    "reportChartPreferences": {}
+  },
+  "format": "bros-ledger-backup",
+  "version": 2,
+  "exportedAt": "2026-10-28T10:00:00.000Z"
+}

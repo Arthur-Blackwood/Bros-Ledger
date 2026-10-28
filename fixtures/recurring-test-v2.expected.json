@@ -1,0 +1,18 @@
+{
+  "activeTransactions": 10,
+  "binRecords": 3,
+  "activeSeries": 5,
+  "currencyCodes": [
+    "AUD",
+    "USD"
+  ],
+  "nextLoadDate": "2026-10-28",
+  "dueGenerated": [
+    "2026-10-22 (weekly)",
+    "2026-10-28 (daily)",
+    "2026-02-28 (yearly)"
+  ],
+  "nextMonthly": "2026-10-31",
+  "nextCustom": "2026-10-31",
+  "stoppedSeriesGenerates": 0
+}
