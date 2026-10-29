@@ -1,5 +1,11 @@
 # Bro’s Ledger
 
+> **维护状态 / Maintenance status**
+>
+> Bro’s Ledger 后续将仅作少量维护，不再作为主要开发项目。如果你打算长期使用，建议转用第二代项目 **[Simple Ledger（辛普账本）](https://github.com/Arthur-Blackwood/Simple-Ledger-Releases)**。目前提供 macOS App，可在 **[Releases](https://github.com/Arthur-Blackwood/Simple-Ledger-Releases/releases/latest)** 下载。迁移前请先从旧版导出备份。
+>
+> Bro’s Ledger will receive limited maintenance going forward. Active development has moved to **[Simple Ledger](https://github.com/Arthur-Blackwood/Simple-Ledger-Releases)**, its second-generation successor. For ongoing use, we recommend the new macOS app, available from **[Releases](https://github.com/Arthur-Blackwood/Simple-Ledger-Releases/releases/latest)**. Export a backup from Bro’s Ledger before migrating.
+
 A private, local-first personal finance ledger. Every transaction, category and preference lives in your browser’s local storage — there is no account to create, no server-side database, and nothing to sign in to.
 
 Built with Next.js 16 and React 19, bundled by Vite through [vinext](https://www.npmjs.com/package/vinext).
